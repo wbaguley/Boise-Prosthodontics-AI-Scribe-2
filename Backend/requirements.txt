@@ -1,0 +1,46 @@
+# Core Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+websockets==12.0
+python-multipart==0.0.6
+
+# AI/ML Dependencies
+openai-whisper==20231117
+torch==2.1.0
+torchaudio==2.1.0
+numpy==1.24.4
+
+# Speaker Diarization
+pyannote.audio==3.1.1
+pyannote.core==5.0.0
+pyannote.database==5.0.1
+pyannote.metrics==3.2.1
+pyannote.pipeline==3.0.1
+
+# Audio Processing
+librosa==0.10.1
+soundfile==0.12.1
+pydub==0.25.1
+scipy==1.11.4
+
+# API and Networking
+requests==2.31.0
+httpx==0.25.0
+aiofiles==23.2.1
+
+# Database
+sqlalchemy==2.0.23
+
+# Utils
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# Email and Security
+cryptography==41.0.7
+secure-smtplib==0.1.1
+
+# Logging
+loguru==0.7.2

@@ -1,0 +1,6 @@
+{
+  "original_soap": "SUBJECTIVE:\n- Chief Complaint: Tooth pain in upper left molar\n- Duration: 1 week\n\nOBJECTIVE:\n- Visual examination performed\n- Tender to percussion\n\nASSESSMENT:\n- Possible pulpitis\n\nPLAN:\n- Further evaluation needed",
+  "transcript": "Doctor: Good morning, what brings you in today? Patient: I've been having pain in my upper left tooth for about a week now.",
+  "user_message": "Add that the patient has diabetes type 2 and is taking metformin",
+  "chat_history": []
+}

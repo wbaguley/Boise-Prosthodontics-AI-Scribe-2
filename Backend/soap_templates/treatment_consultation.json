@@ -1,0 +1,26 @@
+{
+  "name": "Treatment Consultation",
+  "sections": {
+    "SUBJECTIVE": [
+      "Patient's Understanding",
+      "Treatment Goals",
+      "Concerns/Questions"
+    ],
+    "OBJECTIVE": [
+      "Treatment Options Discussed",
+      "Benefits and Risks",
+      "Time Requirements",
+      "Financial Considerations"
+    ],
+    "ASSESSMENT": [
+      "Patient's Decision",
+      "Readiness for Treatment"
+    ],
+    "PLAN": [
+      "Selected Treatment",
+      "Preparation Requirements",
+      "Next Appointment",
+      "Pre-treatment Instructions"
+    ]
+  }
+}

@@ -1,0 +1,117 @@
+# Node.js/React
+node_modules/
+build/
+dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.npm
+.yarn-integrity
+.cache
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.env
+*.pyc
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.egg-info/
+*.egg
+
+# Docker
+Dockerfile.local
+docker-compose.override.yml
+docker-compose.local.yml
+*.tar
+*.tar.gz
+
+# Models (too large for git)
+backend/models/*.bin
+backend/models/*.pth
+backend/models/*.pt
+backend/models/*.onnx
+backend/models/*.safetensors
+backend/models/whisper-*
+backend/models/pyannote-*
+
+# Logs and Temp Files
+logs/
+*.wav
+*.mp3
+*.webm
+temp/
+*.tmp
+*.temp
+backend/logs/*.txt
+backend/logs/*.log
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Secrets and Credentials
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+*.pfx
+
+# Testing
+coverage/
+.nyc_output/
+
+# Production
+/build
+/dist
+
+# Hugging Face cache
+.cache/
+~/.cache/huggingface/
+~/.cache/torch/
+
+# Ollama models (stored in Docker volume)
+ollama_data/
+
+# Backup files
+*.backup
+*.bak
+backup_*.tar.gz
+
+# Session data (PHI - never commit)
+sessions/
+recordings/
+transcripts/
+soap_notes/

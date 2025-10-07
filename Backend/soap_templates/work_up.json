@@ -1,0 +1,32 @@
+{
+  "name": "Work Up",
+  "sections": {
+    "SUBJECTIVE": [
+      "Chief Complaint",
+      "History of Present Illness",
+      "Dental History",
+      "Medical History",
+      "Current Medications",
+      "Allergies"
+    ],
+    "OBJECTIVE": [
+      "Extraoral Exam",
+      "Intraoral Exam",
+      "Existing Restorations",
+      "Periodontal Status",
+      "Radiographic Findings",
+      "Occlusion Analysis"
+    ],
+    "ASSESSMENT": [
+      "Primary Diagnosis",
+      "Secondary Findings",
+      "Prognosis"
+    ],
+    "PLAN": [
+      "Immediate Treatment",
+      "Definitive Treatment",
+      "Alternative Options",
+      "Follow-up Schedule"
+    ]
+  }
+}

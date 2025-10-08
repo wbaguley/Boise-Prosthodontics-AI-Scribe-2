@@ -163,5 +163,5 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
     print("🦷 Starting Boise Prosthodontics AI Scribe (Mock Mode)...")
-    print(f"📍 WebSocket: ws://localhost:8000/ws/audio")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print(f"📍 WebSocket: ws://localhost:3051/ws/audio")
+    uvicorn.run(app, host="0.0.0.0", port=3051)

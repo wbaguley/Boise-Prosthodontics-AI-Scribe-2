@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import VoiceProfile from './VoiceProfile';
+import VoiceProfile from './Voiceprofile';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = 'http://localhost:3051';
 
 const Dashboard = ({ onNavigate }) => {
   const [sessions, setSessions] = useState([]);

@@ -111,7 +111,7 @@ python init_database.py --reset
 ### Adding Providers
 
 1. **Via UI:**
-   - Open http://localhost:3000
+   - Open http://localhost:3050
    - Click the ⚙️ icon next to Provider dropdown
    - Click "Add New Provider"
    - Enter name, specialty, credentials (optional)
@@ -119,7 +119,7 @@ python init_database.py --reset
 
 2. **Via API:**
    ```bash
-   curl -X POST http://localhost:8000/api/providers \
+   curl -X POST http://localhost:3051/api/providers \
      -H "Content-Type: application/json" \
      -d '{
        "name": "Dr. Johnson",
@@ -416,8 +416,8 @@ For issues or questions:
 
 - [ ] Docker containers running
 - [ ] Database initialized with providers
-- [ ] Frontend loads at http://localhost:3000
-- [ ] Backend health check: http://localhost:8000/health
+- [ ] Frontend loads at http://localhost:3050
+- [ ] Backend health check: http://localhost:3051/health
 - [ ] Provider dropdown shows providers
 - [ ] Can add new provider via UI
 - [ ] Can access voice training modal

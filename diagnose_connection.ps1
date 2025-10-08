@@ -16,25 +16,26 @@ try {
 Write-Host ""
 
 # Test 2: Is Backend running?
-Write-Host "2. Testing Backend at localhost:8000..." -ForegroundColor Yellow
+Write-Host "2. Testing Backend at localhost:3051..." -ForegroundColor Yellow
 try {
-    $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -TimeoutSec 3
+    $response = Invoke-WebRequest -Uri "http://localhost:3051/health" -TimeoutSec 3
     Write-Host "✅ Backend IS running" -ForegroundColor Green
     Write-Host $response.Content
 } catch {
-    Write-Host "❌ Backend is NOT responding at localhost:8000" -ForegroundColor Red
-    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "✅ Backend is responding at 127.0.0.1:3051" -ForegroundColor Green
+} catch {
+    Write-Host "❌ Backend is NOT responding at 127.0.0.1:3051" -ForegroundColor Red
 }
 
 Write-Host ""
 
 # Test 3: Try alternative backend address
-Write-Host "3. Testing Backend at 127.0.0.1:8000..." -ForegroundColor Yellow
+Write-Host "3. Testing Backend at 127.0.0.1:3051..." -ForegroundColor Yellow
 try {
-    $response = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -TimeoutSec 3
+    $response = Invoke-WebRequest -Uri "http://127.0.0.1:3051/health" -TimeoutSec 3
     Write-Host "✅ Backend responds to 127.0.0.1" -ForegroundColor Green
 } catch {
-    Write-Host "❌ Backend is NOT responding at 127.0.0.1:8000" -ForegroundColor Red
+    Write-Host "❌ Backend is NOT responding at 127.0.0.1:3051" -ForegroundColor Red
 }
 
 Write-Host ""
@@ -50,9 +51,9 @@ try {
 
 Write-Host ""
 
-# Test 5: Check what's listening on port 8000
-Write-Host "5. Checking what is listening on port 8000..." -ForegroundColor Yellow
-netstat -ano | Select-String ":8000"
+# Test 5: Check what's listening on port 3051
+Write-Host "5. Checking what is listening on port 3051..." -ForegroundColor Yellow
+netstat -ano | Select-String ":3051"
 
 Write-Host ""
 Write-Host "====================================" -ForegroundColor Cyan

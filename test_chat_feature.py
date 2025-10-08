@@ -6,7 +6,7 @@ Test script for the new SOAP chat editing feature
 import requests
 import json
 
-API_URL = "http://localhost:8000"
+API_URL = "http://localhost:3051"
 
 def test_chat_endpoint():
     """Test the new chat endpoint"""
@@ -62,7 +62,7 @@ PLAN:
             print(f"Response: {response.text}")
             
     except requests.exceptions.ConnectionError:
-        print("❌ Cannot connect to backend server. Make sure it's running on localhost:8000")
+        print("❌ Cannot connect to backend server. Make sure it's running on localhost:3051")
     except Exception as e:
         print(f"❌ Test failed with error: {e}")
 

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-const API_URL = 'http://localhost:8000';
-const WS_URL = 'ws://localhost:8000';
+const API_URL = 'http://localhost:3051';
+const WS_URL = 'ws://localhost:3051';
 
 const RecordingScreen = ({ onNavigate }) => {
   const [isRecording, setIsRecording] = useState(false);

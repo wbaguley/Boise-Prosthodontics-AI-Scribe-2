@@ -31,12 +31,12 @@ try {
 Write-Host ""
 Write-Host "3. Testing backend health endpoint:" -ForegroundColor Blue
 try {
-    $healthResponse = Invoke-RestMethod -Uri "http://localhost:8000/health" -Method Get -TimeoutSec 5
+    $healthResponse = Invoke-RestMethod -Uri "http://localhost:3051/health" -Method Get -TimeoutSec 5
     Write-Host "✅ Backend health check successful" -ForegroundColor Green
     Write-Host "Ollama status: $($healthResponse.ollama)" -ForegroundColor $(if ($healthResponse.ollama -eq "healthy") { "Green" } else { "Red" })
     Write-Host "Whisper status: $($healthResponse.whisper)" -ForegroundColor Green
 } catch {
-    Write-Host "❌ Cannot connect to backend at localhost:8000" -ForegroundColor Red
+    Write-Host "❌ Cannot connect to backend at localhost:3051" -ForegroundColor Red
     Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
 }
 

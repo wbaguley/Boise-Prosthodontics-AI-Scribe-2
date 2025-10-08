@@ -508,6 +508,6 @@ async def add_vocabulary(terms: List[str]):
 if __name__ == "__main__":
     import uvicorn
     print("🦷 Starting Boise Prosthodontics AI Scribe...")
-    print(f"📍 WebSocket: ws://localhost:8000/ws/audio")
+    print(f"📍 WebSocket: ws://localhost:3051/ws/audio")
     print(f"🧠 Ollama: {OLLAMA_HOST}")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=3051)

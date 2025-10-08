@@ -78,16 +78,16 @@ try {
 
 # Check Backend
 try {
-    $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -TimeoutSec 5 -ErrorAction Stop
-    Write-Host "✅ Backend: Running at http://localhost:8000" -ForegroundColor Green
+    $response = Invoke-WebRequest -Uri "http://localhost:3051/health" -TimeoutSec 5 -ErrorAction Stop
+    Write-Host "✅ Backend: Running at http://localhost:3051" -ForegroundColor Green
 } catch {
     Write-Host "❌ Backend: Not responding" -ForegroundColor Red
 }
 
 # Check Frontend
 try {
-    $response = Invoke-WebRequest -Uri "http://localhost:3000" -TimeoutSec 5 -ErrorAction Stop
-    Write-Host "✅ Frontend: Running at http://localhost:3000" -ForegroundColor Green
+    $response = Invoke-WebRequest -Uri "http://localhost:3050" -TimeoutSec 5 -ErrorAction Stop
+    Write-Host "✅ Frontend: Running at http://localhost:3050" -ForegroundColor Green
 } catch {
     Write-Host "❌ Frontend: Not responding" -ForegroundColor Red
 }
@@ -97,7 +97,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "✨ Services Started!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "📱 Access the app at: http://localhost:3000" -ForegroundColor Cyan
+Write-Host "📱 Access the app at: http://localhost:3050" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "🔧 Useful commands:" -ForegroundColor Yellow
 Write-Host "   View logs:    docker-compose logs -f backend" -ForegroundColor Gray

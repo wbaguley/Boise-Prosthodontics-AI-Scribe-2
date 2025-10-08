@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = 'http://localhost:3051';
 
 const SessionDetail = ({ sessionId, onNavigate, onClose }) => {
   const [session, setSession] = useState(null);

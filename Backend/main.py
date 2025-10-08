@@ -1778,4 +1778,4 @@ if __name__ == "__main__":
     print(f"Whisper: {'Enabled' if WHISPER_AVAILABLE else 'Mock Mode'}")
     print(f"Diarization: {'Enabled' if DIARIZATION_AVAILABLE else 'Single Speaker Mode'}")
     print(f"Ollama: {OLLAMA_HOST}")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=3051)

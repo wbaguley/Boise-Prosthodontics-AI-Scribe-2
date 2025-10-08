@@ -381,7 +381,7 @@ async def test_transcription():
 if __name__ == "__main__":
     import uvicorn
     print("🦷 Starting Boise Prosthodontics AI Scribe...")
-    print(f"📍 WebSocket: ws://localhost:8000/ws/audio")
+    print(f"📍 WebSocket: ws://localhost:3051/ws/audio")
     print(f"🎙️ Whisper: {'Enabled' if WHISPER_AVAILABLE else 'Disabled (Mock Mode)'}")
     print(f"🧠 Ollama: {OLLAMA_HOST}")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=3051)

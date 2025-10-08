@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import VoiceProfile from './VoiceProfile';
+import VoiceProfile from './Voiceprofile';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3051';
+const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:3051';
 
 const Scribe = () => {
   const [isRecording, setIsRecording] = useState(false);

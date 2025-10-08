@@ -71,7 +71,7 @@ Write-Host "✨ Services Starting!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Wait 30 seconds, then open:" -ForegroundColor Yellow
-Write-Host "📱 http://localhost:3000" -ForegroundColor Cyan
+Write-Host "📱 http://localhost:3050" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Press any key to close this window..." -ForegroundColor Gray
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

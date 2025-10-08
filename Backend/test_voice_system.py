@@ -9,7 +9,7 @@ import json
 import sys
 from pathlib import Path
 
-API_URL = "http://localhost:8000"
+API_URL = "http://localhost:3051"
 
 def print_section(title):
     print(f"\n{'='*60}")
@@ -192,7 +192,7 @@ def test_websocket():
         # Try to connect to WebSocket port
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(2)
-        result = sock.connect_ex(('localhost', 8000))
+        result = sock.connect_ex(('localhost', 3051))
         sock.close()
         
         if result == 0:

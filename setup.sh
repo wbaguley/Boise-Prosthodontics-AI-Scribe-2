@@ -59,7 +59,7 @@ else
     echo -e "${YELLOW}⚠️  Ollama not ready yet${NC}"
 fi
 
-if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+if curl -s http://localhost:3051/health > /dev/null 2>&1; then
     echo -e "${GREEN}✅ Backend running${NC}"
 else
     echo -e "${YELLOW}⚠️  Backend not ready yet${NC}"

@@ -30,7 +30,7 @@ COPY init_database.py ./
 ENV PYTHONUNBUFFERED=1
 ENV OLLAMA_HOST=http://ollama:11434
 
-EXPOSE 8000
+EXPOSE 3051
 
 # Run database initialization and then start the server
-CMD python init_database.py && uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+CMD python init_database.py && uvicorn main:app --host 0.0.0.0 --port 3051 --reload

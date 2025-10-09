@@ -1,8 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import VoiceProfile from './Voiceprofile';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3051';
-const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:3051';
+const API_URL = process.env.REACT_APP_API_URL || '';
+const getWebSocketURL = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const host = window.location.host;
+  return `${protocol}${host}/ws/audio`;
+};
 
 const Scribe = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -143,9 +147,10 @@ const Scribe = () => {
   };
 
   const connectWebSocket = () => {
-    const wsUrl = `${WS_URL}/ws/audio`;
+    const wsUrl = getWebSocketURL();
     
     try {
+      console.log('Connecting to WebSocket:', wsUrl);
       websocketRef.current = new WebSocket(wsUrl);
       
       websocketRef.current.onopen = () => {
@@ -442,19 +447,19 @@ What would you like to change about the SOAP note?`,
               </div>
             </div>
             
-            <div className="flex gap-4">
-              <div>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="w-full sm:w-auto">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Provider
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <select
                     value={selectedProvider?.id || ''}
                     onChange={(e) => {
                       const provider = providers.find(p => p.id === parseInt(e.target.value));
                       setSelectedProvider(provider);
                     }}
-                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                   >
                     {providers.map(provider => (
                       <option key={provider.id} value={provider.id}>
@@ -462,32 +467,34 @@ What would you like to change about the SOAP note?`,
                       </option>
                     ))}
                   </select>
-                  <button
-                    onClick={() => setShowProviderModal(true)}
-                    className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-                    title="Manage Providers"
-                  >
-                    ⚙️
-                  </button>
-                  <button
-                    onClick={() => setShowVoiceProfile(true)}
-                    disabled={!selectedProvider}
-                    className="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50"
-                    title="Train Voice"
-                  >
-                    🎤
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowProviderModal(true)}
+                      className="flex-1 sm:flex-none px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm whitespace-nowrap"
+                      title="Manage Providers"
+                    >
+                      ⚙️ Manage
+                    </button>
+                    <button
+                      onClick={() => setShowVoiceProfile(true)}
+                      disabled={!selectedProvider}
+                      className="flex-1 sm:flex-none px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm whitespace-nowrap"
+                      title="Train Voice"
+                    >
+                      🎤 Train
+                    </button>
+                  </div>
                 </div>
               </div>
               
-              <div>
+              <div className="w-full sm:w-auto">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Template
                 </label>
                 <select
                   value={selectedTemplate}
                   onChange={(e) => setSelectedTemplate(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                 >
                   {availableTemplates.map(template => (
                     <option key={template} value={template}>
@@ -502,8 +509,8 @@ What would you like to change about the SOAP note?`,
 
         {/* Provider Management Modal */}
         {showProviderModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-[500px] max-h-[600px] overflow-y-auto">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-4 sm:p-6 w-full max-w-[500px] max-h-[90vh] overflow-y-auto">
               <h3 className="text-lg font-semibold mb-4">Manage Providers</h3>
               
               {/* Add New Provider Form */}

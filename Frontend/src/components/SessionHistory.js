@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API_URL = 'http://localhost:3051';
+const API_URL = process.env.REACT_APP_API_URL || '';
 
 const SessionHistory = ({ onNavigate }) => {
   const [sessions, setSessions] = useState([]);

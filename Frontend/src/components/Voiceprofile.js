@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3051';
+const API_URL = process.env.REACT_APP_API_URL || '';
 
 const VoiceProfile = ({ doctorName, onClose, onSave }) => {
   const [isRecording, setIsRecording] = useState(false);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import VoiceProfile from './Voiceprofile';
 
-const API_URL = 'http://localhost:3051';
+const API_URL = process.env.REACT_APP_API_URL || '';
 
 const Dashboard = ({ onNavigate }) => {
   const [sessions, setSessions] = useState([]);
@@ -663,12 +663,20 @@ const Dashboard = ({ onNavigate }) => {
               <h1 className="text-3xl font-bold text-gray-800">Boise Prosthodontics AI Scribe</h1>
               <p className="text-sm text-gray-600 mt-1">Dashboard</p>
             </div>
-            <button
-              onClick={() => setShowSettings(true)}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2"
-            >
-              Settings
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowAITraining(true)}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+              >
+                🤖 AI Training
+              </button>
+              <button
+                onClick={() => setShowSettings(true)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2"
+              >
+                Settings
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1250,16 +1258,7 @@ const Dashboard = ({ onNavigate }) => {
                 </button>
               </div>
 
-              {/* AI Model Training */}
-              <div className="bg-purple-50 rounded-lg p-6">
-                <h4 className="font-semibold text-lg mb-4">AI Model Training</h4>
-                <button
-                  onClick={() => setShowAITraining(true)}
-                  className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium"
-                >
-                  🤖 Open AI Training Interface
-                </button>
-              </div>
+
             </div>
           </div>
         </div>

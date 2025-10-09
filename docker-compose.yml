@@ -49,37 +49,32 @@ services:
       context: ./Frontend
       dockerfile: Dockerfile
     container_name: boise_new_frontend
-    ports:
-      - "3050:3000"
     environment:
-      - REACT_APP_WS_URL=ws://localhost:3051/ws/audio
-      - REACT_APP_API_URL=http://localhost:3051
-      # ngrok support - disable host check
+      - REACT_APP_WS_URL=
+      - REACT_APP_API_URL=
       - DANGEROUSLY_DISABLE_HOST_CHECK=true
       - WDS_SOCKET_PORT=0
+      - GENERATE_SOURCEMAP=false
     networks:
       - scribe_network
     restart: unless-stopped
     depends_on:
       - backend
 
-  # ngrok Service (Optional - run ngrok in Docker)
-  ngrok:
-    image: ngrok/ngrok:latest
-    container_name: boise_ngrok
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: boise_new_nginx
     ports:
-      - "4040:4040"  # ngrok web interface
-    environment:
-      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-    command:
-      - "http"
-      - "frontend:3000"
-      - "--domain=boiseprosthodontic.ngrok-free.app"
+      - "3050:3050"
+    volumes:
+      - ./nginx/nginx-config.conf:/etc/nginx/nginx.conf:ro
     networks:
       - scribe_network
     restart: unless-stopped
     depends_on:
       - frontend
+      - backend
 
 networks:
   scribe_network:

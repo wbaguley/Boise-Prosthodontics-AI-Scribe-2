@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-const API_URL = 'http://localhost:3051';
-const WS_URL = 'ws://localhost:3051';
+const API_URL = process.env.REACT_APP_API_URL || '';
+const getWebSocketURL = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const host = window.location.host;
+  return `${protocol}${host}/ws/audio`;
+};
 
 const RecordingScreen = ({ onNavigate }) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -72,7 +76,9 @@ const RecordingScreen = ({ onNavigate }) => {
 
   const connectWebSocket = () => {
     try {
-      websocketRef.current = new WebSocket(`${WS_URL}/ws/audio`);
+      const wsURL = getWebSocketURL();
+      console.log('Connecting to WebSocket:', wsURL);
+      websocketRef.current = new WebSocket(wsURL);
       
       websocketRef.current.onopen = () => {
         setConnectionStatus('connected');
@@ -456,8 +462,8 @@ What would you like to change about the SOAP note?`,
               </div>
             </div>
             
-            <div className="flex gap-4">
-              <div>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="w-full sm:w-auto">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Provider
                 </label>
@@ -467,7 +473,7 @@ What would you like to change about the SOAP note?`,
                     const provider = providers.find(p => p.id === parseInt(e.target.value));
                     setSelectedProvider(provider);
                   }}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                 >
                   {providers.map(provider => (
                     <option key={provider.id} value={provider.id}>
@@ -477,14 +483,14 @@ What would you like to change about the SOAP note?`,
                 </select>
               </div>
               
-              <div>
+              <div className="w-full sm:w-auto">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Template
                 </label>
                 <select
                   value={selectedTemplate}
                   onChange={(e) => setSelectedTemplate(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                 >
                   {availableTemplates.map(template => (
                     <option key={template} value={template}>

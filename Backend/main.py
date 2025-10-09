@@ -55,7 +55,8 @@ from database import (
     save_session, get_all_sessions, get_session_by_id, get_sessions_by_provider,
     create_provider, get_all_providers, get_provider_by_id, get_provider_by_name,
     update_provider, delete_provider, update_provider_voice_profile,
-    update_session_patient_info, update_session_email_content, mark_email_sent, get_session_email_status
+    update_session_patient_info, update_session_email_content, mark_email_sent, get_session_email_status,
+    update_session_soap, update_session_template
 )
 from templates import TemplateManager
 from voice_profile_manager import VoiceProfileManager
@@ -366,20 +367,25 @@ def generate_soap_note(transcript, template_name="default", doctor_name=""):
         if ai_instructions:
             template_prompt += f"Special Instructions: {ai_instructions}\n\n"
     
-    prompt = f"""You are Dr. {doctor_name}, a prosthodontist. Convert this dental consultation into a SOAP note.
+    prompt = f"""You are Dr. {doctor_name}, a prosthodontist documenting a patient consultation. Based on the following consultation notes, create a professional SOAP note.
 
 {template_prompt}
 
-Transcript:
+Consultation Details:
 {transcript}
 
-Create a structured SOAP note with:
-SUBJECTIVE: Patient complaints and history
-OBJECTIVE: Clinical findings
-ASSESSMENT: Diagnosis
-PLAN: Treatment recommendations
+Instructions:
+- Create a structured SOAP note following proper format
+- SUBJECTIVE: Document patient complaints, concerns, and relevant history
+- OBJECTIVE: Record clinical examination findings and observations  
+- ASSESSMENT: Provide professional diagnosis or clinical assessment
+- PLAN: Outline treatment recommendations and next steps
+- Use appropriate dental terminology and tooth numbering system (1-32)
+- Write in professional medical documentation style
+- Do not reference "transcript" or "recording" in the SOAP note content
+- Present information as direct clinical observations and patient reports
 
-Use proper dental terminology and tooth numbers (1-32). Follow any special instructions provided above."""
+{ai_instructions if ai_instructions else ""}"""
 
     try:
         response = requests.post(
@@ -1301,6 +1307,37 @@ async def health_check():
         "ollama": ollama_status,
         "timestamp": datetime.now().isoformat()
     }
+
+@app.post("/api/regenerate_soap")
+async def regenerate_soap(request: dict):
+    """Regenerate SOAP note with a different template"""
+    try:
+        session_id = request.get("session_id")
+        transcript = request.get("transcript") 
+        template = request.get("template")
+        doctor = request.get("doctor")
+        
+        if not all([session_id, transcript, template, doctor]):
+            raise HTTPException(status_code=400, detail="Missing required fields")
+        
+        # Generate new SOAP note using existing function
+        soap_note = generate_soap_note(transcript, template, doctor)
+        
+        # Update session SOAP note
+        update_session_soap(session_id, soap_note)
+        
+        # Update session template used 
+        update_session_template(session_id, template)
+        
+        return {
+            "soap_note": soap_note,
+            "template_used": template,
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logging.error(f"Error regenerating SOAP note: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate SOAP note: {str(e)}")
 
 # ============================================
 # Email and Patient Management Endpoints

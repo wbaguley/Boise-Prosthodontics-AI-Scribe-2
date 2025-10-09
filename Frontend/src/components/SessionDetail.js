@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-const API_URL = 'http://localhost:3051';
+const API_URL = process.env.REACT_APP_API_URL || '';
 
 const SessionDetail = ({ sessionId, onNavigate, onClose }) => {
   const [session, setSession] = useState(null);
@@ -36,6 +36,105 @@ const SessionDetail = ({ sessionId, onNavigate, onClose }) => {
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Template switching
+  const [availableTemplates, setAvailableTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [isRegeneratingSOAP, setIsRegeneratingSOAP] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+
+  const fetchTemplates = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/templates`);
+      if (response.ok) {
+        const data = await response.json();
+        // Convert object keys to array of template names
+        const templateNames = Object.keys(data);
+        console.log('Fetched templates:', templateNames);
+        setAvailableTemplates(templateNames);
+      }
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+    }
+  };
+
+  const regenerateSOAPWithTemplate = async (newTemplate) => {
+    console.log('Starting template regeneration:', {
+      newTemplate,
+      session: session?.session_id,
+      transcript: session?.transcript ? 'Available' : 'Missing',
+      availableTemplates: availableTemplates?.length || 0
+    });
+
+    // Validate inputs
+    if (!newTemplate) {
+      alert('Please select a template');
+      return;
+    }
+
+    if (!session?.transcript) {
+      alert('No transcript available to regenerate SOAP note');
+      return;
+    }
+
+    if (!session?.session_id) {
+      alert('Session ID is missing');
+      return;
+    }
+
+    if (newTemplate === session?.template_used) {
+      alert('This template is already being used');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Are you sure you want to regenerate the SOAP note using the "${formatTemplateName(newTemplate)}" template? This will replace the current SOAP note.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsRegeneratingSOAP(true);
+    try {
+      console.log('Making API call to regenerate_soap');
+      const response = await fetch(`${API_URL}/api/regenerate_soap`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          transcript: session.transcript,
+          template: newTemplate,
+          doctor: session.doctor
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('SOAP regeneration successful:', data);
+        setSession(prev => ({
+          ...prev,
+          soap_note: data.soap_note,
+          template_used: newTemplate
+        }));
+        setEditedSOAP(data.soap_note);
+        setSelectedTemplate(newTemplate);
+        setShowTemplateModal(false);
+        alert('SOAP note regenerated successfully!');
+      } else {
+        const errorData = await response.json();
+        console.error('SOAP regeneration failed:', errorData);
+        alert(`Failed to regenerate SOAP note: ${errorData.detail || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error regenerating SOAP note:', error);
+      alert('Error regenerating SOAP note. Please try again.');
+    } finally {
+      setIsRegeneratingSOAP(false);
+    }
+  };
+
   const fetchSessionDetails = useCallback(async () => {
     try {
       setLoading(true);
@@ -44,6 +143,7 @@ const SessionDetail = ({ sessionId, onNavigate, onClose }) => {
         const data = await response.json();
         setSession(data);
         setEditedSOAP(data.soap_note || '');
+        setSelectedTemplate(data.template_used || 'work_up');
       } else {
         setError('Session not found');
       }
@@ -57,7 +157,17 @@ const SessionDetail = ({ sessionId, onNavigate, onClose }) => {
 
   useEffect(() => {
     fetchSessionDetails();
+    fetchTemplates();
   }, [fetchSessionDetails]);
+
+  // Initialize selectedTemplate when session or availableTemplates change
+  useEffect(() => {
+    if (session?.template_used && availableTemplates.length > 0) {
+      setSelectedTemplate(session.template_used);
+    } else if (availableTemplates.length > 0 && !selectedTemplate) {
+      setSelectedTemplate(availableTemplates[0]); // Default to first available template
+    }
+  }, [session?.template_used, availableTemplates]);
 
   const saveChanges = async () => {
     if (!session || !editedSOAP.trim()) return;
@@ -499,7 +609,23 @@ What would you like to change?`,
             </div>
             <div>
               <h3 className="font-medium text-gray-700">Template</h3>
-              <p className="text-sm text-gray-600">{formatTemplateName(session?.template_used)}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-gray-600">{formatTemplateName(session?.template_used)}</p>
+                <button
+                  onClick={() => {
+                    if (availableTemplates.length === 0) {
+                      alert('Loading templates, please wait...');
+                      fetchTemplates();
+                    } else {
+                      setShowTemplateModal(true);
+                    }
+                  }}
+                  className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
+                  title="Change Template & Regenerate SOAP"
+                >
+                  🔄 Switch
+                </button>
+              </div>
             </div>
             <div>
               <h3 className="font-medium text-gray-700">Provider</h3>
@@ -898,6 +1024,60 @@ What would you like to change?`,
           )}
         </div>
       </div>
+
+      {/* Template Switching Modal */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg w-full max-w-md">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Switch Template & Regenerate SOAP</h3>
+              
+              <div className="mb-6">
+                <p className="text-gray-600 mb-4">
+                  Select a new template to regenerate the SOAP note. This will replace the current SOAP note.
+                </p>
+                
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Choose Template:
+                </label>
+                <select
+                  value={selectedTemplate}
+                  onChange={(e) => setSelectedTemplate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  disabled={isRegeneratingSOAP}
+                >
+                  {availableTemplates && availableTemplates.length > 0 ? 
+                    availableTemplates.map(template => (
+                      <option key={template} value={template}>
+                        {formatTemplateName(template)}
+                      </option>
+                    )) : (
+                      <option value="">Loading templates...</option>
+                    )
+                  }
+                </select>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowTemplateModal(false)}
+                  className="flex-1 px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  disabled={isRegeneratingSOAP}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => regenerateSOAPWithTemplate(selectedTemplate)}
+                  disabled={isRegeneratingSOAP || selectedTemplate === session?.template_used || !selectedTemplate || availableTemplates.length === 0}
+                  className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+                >
+                  {isRegeneratingSOAP ? '🔄 Regenerating...' : '🔄 Regenerate'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Session Confirmation Modal */}
       {showDeleteModal && (

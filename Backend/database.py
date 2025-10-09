@@ -54,9 +54,37 @@ SessionLocal = sessionmaker(bind=engine)
 # ============================================
 
 def create_provider(name, specialty=None, credentials=None, email=None):
-    """Create a new provider"""
+    """Create a new provider or reactivate existing inactive one"""
     db = SessionLocal()
     try:
+        # Check if provider already exists (including inactive ones)
+        existing_provider = db.query(Provider).filter(Provider.name == name).first()
+        
+        if existing_provider:
+            if not existing_provider.is_active:
+                # Reactivate the existing provider with updated info
+                existing_provider.is_active = True
+                existing_provider.specialty = specialty
+                existing_provider.credentials = credentials  
+                existing_provider.email = email
+                existing_provider.updated_at = datetime.utcnow()
+                db.commit()
+                db.refresh(existing_provider)
+                return {
+                    'id': existing_provider.id,
+                    'name': existing_provider.name,
+                    'specialty': existing_provider.specialty,
+                    'credentials': existing_provider.credentials,
+                    'email': existing_provider.email,
+                    'has_voice_profile': existing_provider.has_voice_profile,
+                    'is_active': existing_provider.is_active
+                }
+            else:
+                # Provider is already active
+                print(f"Provider {name} already exists and is active")
+                return None
+        
+        # Create new provider
         provider = Provider(
             name=name,
             specialty=specialty,
@@ -318,6 +346,23 @@ def update_session_soap(session_id, soap_note):
         return False
     except Exception as e:
         print(f"Error updating session SOAP: {e}")
+        db.rollback()
+        return False
+    finally:
+        db.close()
+
+def update_session_template(session_id, template_used):
+    """Update the template used for a specific session"""
+    db = SessionLocal()
+    try:
+        session = db.query(Session).filter_by(session_id=session_id).first()
+        if session:
+            session.template_used = template_used
+            db.commit()
+            return True
+        return False
+    except Exception as e:
+        print(f"Error updating session template: {e}")
         db.rollback()
         return False
     finally:

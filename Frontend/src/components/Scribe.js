@@ -3,9 +3,24 @@ import VoiceProfile from './Voiceprofile';
 
 const API_URL = process.env.REACT_APP_API_URL || '';
 const getWebSocketURL = () => {
+  // Use the same host but ensure we go through the nginx proxy
   const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
   const host = window.location.host;
-  return `${protocol}${host}/ws/audio`;
+  
+  console.log('WebSocket URL generation - Protocol:', protocol, 'Host:', host);
+  
+  // If we're in development and connecting to ngrok, use the same host
+  // If we're running locally, use localhost:3050 (nginx proxy)
+  if (host.includes('ngrok') || host.includes('localhost:3050')) {
+    const url = `${protocol}${host}/ws/audio`;
+    console.log('Generated WebSocket URL:', url);
+    return url;
+  } else {
+    // Fallback to localhost nginx proxy
+    const url = `ws://localhost:3050/ws/audio`;
+    console.log('Fallback WebSocket URL:', url);
+    return url;
+  }
 };
 
 const Scribe = () => {
@@ -42,7 +57,6 @@ const Scribe = () => {
   useEffect(() => {
     fetchProviders();
     fetchTemplates();
-    connectWebSocket();
     
     return () => {
       if (websocketRef.current) {
@@ -147,6 +161,14 @@ const Scribe = () => {
   };
 
   const connectWebSocket = () => {
+    // Prevent multiple connections
+    if (websocketRef.current && 
+        (websocketRef.current.readyState === WebSocket.CONNECTING || 
+         websocketRef.current.readyState === WebSocket.OPEN)) {
+      console.log('WebSocket already connected or connecting, skipping...');
+      return;
+    }
+
     const wsUrl = getWebSocketURL();
     
     try {
@@ -206,6 +228,18 @@ const Scribe = () => {
     if (!selectedProvider) {
       alert('Please select a provider first');
       return;
+    }
+
+    // Connect to WebSocket only when starting recording
+    if (!websocketRef.current || 
+        (websocketRef.current.readyState !== WebSocket.OPEN && 
+         websocketRef.current.readyState !== WebSocket.CONNECTING)) {
+      connectWebSocket();
+      // Wait a moment for connection to establish
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } else if (websocketRef.current.readyState === WebSocket.CONNECTING) {
+      // Already connecting, just wait
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     try {
@@ -368,11 +402,58 @@ const Scribe = () => {
     setChatMessages([]);
   };
 
-  const toggleEditChat = () => {
+  // Save chat conversation to AI memory
+  const saveChatToMemory = async (messages) => {
+    try {
+      // Filter out only user messages to check if user contributed
+      const userMessages = messages.filter(msg => msg.role === 'user');
+      
+      if (userMessages.length === 0) {
+        // No user messages, don't save
+        return;
+      }
+
+      // Create a summary of the conversation
+      const conversationSummary = messages
+        .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
+        .join('\n\n');
+
+      // Generate a title based on the first user message
+      const firstUserMessage = userMessages[0].content.substring(0, 50);
+      const title = `Chat Session - Scribe - ${firstUserMessage}...`;
+
+      // Save to AI memory as a knowledge article
+      const response = await fetch(`${API_URL}/api/knowledge-articles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title,
+          content: conversationSummary,
+          category: 'Chat Conversations'
+        })
+      });
+
+      if (response.ok) {
+        console.log('Chat conversation saved to AI memory');
+      } else {
+        console.error('Failed to save chat to AI memory');
+      }
+    } catch (error) {
+      console.error('Error saving chat to memory:', error);
+    }
+  };
+
+  const toggleEditChat = async () => {
     if (!soapNote) {
       setStatus('Please generate a SOAP note first before editing');
       return;
     }
+
+    // If we're currently showing the chat and about to close it, save the conversation
+    if (showEditChat && chatMessages.length > 0) {
+      await saveChatToMemory(chatMessages);
+    }
+
     setShowEditChat(!showEditChat);
     if (!showEditChat && chatMessages.length === 0) {
       // Add welcome message when opening chat for the first time
@@ -690,7 +771,7 @@ What would you like to change about the SOAP note?`,
                 onClick={() => copyToClipboard(soapNote)}
                 className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
               >
-                📋 Copy to Dentrix
+                📋 Copy to EHR
               </button>
             </div>
           </div>
@@ -707,7 +788,10 @@ What would you like to change about the SOAP note?`,
             {showEditChat && (
               <div className="border border-gray-200 rounded-lg flex flex-col h-96">
                 <div className="bg-gray-100 px-4 py-2 rounded-t-lg flex justify-between items-center">
-                  <h3 className="font-medium text-gray-700">AI Chat Editor</h3>
+                  <div>
+                    <h3 className="font-medium text-gray-700">AI Chat Editor</h3>
+                    <p className="text-xs text-gray-500">💾 Conversations are automatically saved to AI Memory when chat is closed</p>
+                  </div>
                   <button
                     onClick={clearChat}
                     className="text-sm text-gray-500 hover:text-gray-700"

@@ -1060,18 +1060,35 @@ async def create_template(template_data: dict):
 async def update_template(template_id: str, template_data: dict):
     """Update an existing SOAP template"""
     try:
+        logging.info(f"Updating template {template_id} with data: {template_data}")
+        
         name = template_data.get("name")
-        description = template_data.get("description")
+        description = template_data.get("description") 
         ai_instructions = template_data.get("ai_instructions")
-        sections = template_data.get("sections")
+        
+        # For template updates, we should preserve existing sections unless explicitly told to update them
+        # The frontend should send a special flag to indicate when sections should be updated
+        sections = None
+        if "update_sections" in template_data and template_data.get("update_sections") == True:
+            sections = template_data.get("sections")
+        elif "sections" in template_data:
+            # Only update if the request specifically indicates section updates
+            # For now, don't update sections during regular template edits
+            logging.info("Sections provided but update_sections flag not set, preserving existing sections")
+                
+        logging.info(f"Template update parameters - Name: {name}, Description: {description}")
+        logging.info(f"AI Instructions length: {len(ai_instructions) if ai_instructions else 'None'}")
+        logging.info(f"Will update sections: {sections is not None}")
         
         template = template_manager.update_template(
             template_id, name, description, ai_instructions, sections
         )
         
         if template:
+            logging.info(f"Template {template_id} updated successfully: {template}")
             return {"status": "Template updated successfully", "template": template}
         else:
+            logging.error(f"Template {template_id} not found")
             raise HTTPException(status_code=404, detail="Template not found")
             
     except HTTPException:

@@ -28,6 +28,9 @@ services:
     volumes:
       - ./Backend/models:/app/models
       - ./Backend/logs:/app/logs
+      - backend_data:/app/data
+      - ./Backend/soap_templates:/app/soap_templates
+      - ./Backend/voice_profiles:/app/voice_profiles
       - ./Backend:/app
     environment:
       - OLLAMA_HOST=http://ollama:11434
@@ -41,7 +44,7 @@ services:
     restart: unless-stopped
     depends_on:
       - ollama
-    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3051", "--reload"]
+    command: ["sh", "-c", "python init_data_structure.py && python init_database.py && uvicorn main:app --host 0.0.0.0 --port 3051 --reload"]
     
   # Frontend React App
   frontend:
@@ -82,4 +85,6 @@ networks:
 
 volumes:
   ollama_data:
+    driver: local
+  backend_data:
     driver: local

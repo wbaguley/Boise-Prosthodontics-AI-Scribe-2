@@ -265,11 +265,17 @@ const SessionDetail = ({ sessionId, onNavigate, onClose }) => {
     }
   };
 
-  const toggleEditChat = () => {
+  const toggleEditChat = async () => {
     if (!session?.soap_note && !editedSOAP) {
       alert('No SOAP note to edit');
       return;
     }
+
+    // If we're currently showing the chat and about to close it, save the conversation
+    if (showEditChat && chatMessages.length > 0) {
+      await saveChatToMemory(chatMessages);
+    }
+
     setShowEditChat(!showEditChat);
     if (!showEditChat && chatMessages.length === 0) {
       setChatMessages([{
@@ -291,6 +297,47 @@ What would you like to change?`,
 
   const clearChat = () => {
     setChatMessages([]);
+  };
+
+  // Save chat conversation to AI memory
+  const saveChatToMemory = async (messages) => {
+    try {
+      // Filter out only user messages to check if user contributed
+      const userMessages = messages.filter(msg => msg.role === 'user');
+      
+      if (userMessages.length === 0) {
+        // No user messages, don't save
+        return;
+      }
+
+      // Create a summary of the conversation
+      const conversationSummary = messages
+        .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
+        .join('\n\n');
+
+      // Generate a title based on the session and first user message
+      const firstUserMessage = userMessages[0].content.substring(0, 50);
+      const title = `Chat Session - ${session?.provider || 'Unknown'} - ${firstUserMessage}...`;
+
+      // Save to AI memory as a knowledge article
+      const response = await fetch(`${API_URL}/api/knowledge-articles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title,
+          content: conversationSummary,
+          category: 'Chat Conversations'
+        })
+      });
+
+      if (response.ok) {
+        console.log('Chat conversation saved to AI memory');
+      } else {
+        console.error('Failed to save chat to AI memory');
+      }
+    } catch (error) {
+      console.error('Error saving chat to memory:', error);
+    }
   };
 
   // Email functionality functions
@@ -676,7 +723,7 @@ What would you like to change?`,
                 onClick={() => copyToClipboard(editedSOAP || session?.soap_note || '')}
                 className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
               >
-                📋 Copy to Dentrix
+                📋 Copy to EHR
               </button>
             </div>
           </div>
@@ -709,7 +756,10 @@ What would you like to change?`,
             {showEditChat && (
               <div className="border border-gray-200 rounded-lg flex flex-col h-96">
                 <div className="bg-gray-100 px-4 py-2 rounded-t-lg flex justify-between items-center">
-                  <h3 className="font-medium text-gray-700">AI Chat Editor</h3>
+                  <div>
+                    <h3 className="font-medium text-gray-700">AI Chat Editor</h3>
+                    <p className="text-xs text-gray-500">💾 Conversations are automatically saved to AI Memory when chat is closed</p>
+                  </div>
                   <button
                     onClick={clearChat}
                     className="text-sm text-gray-500 hover:text-gray-700"

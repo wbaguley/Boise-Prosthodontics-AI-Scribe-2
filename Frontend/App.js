@@ -224,7 +224,7 @@ const App = () => {
                 <li>• Click "Start Session" to record consultation</li>
                 <li>• AI identifies Doctor vs Patient speakers</li>
                 <li>• Auto-generates SOAP note format</li>
-                <li>• Edit as needed, then copy to Dentrix</li>
+                <li>• Edit as needed, then copy to EHR</li>
                 <li>• Use "Quick Correction" for additions</li>
               </ul>
             </div>
@@ -259,7 +259,7 @@ const App = () => {
                 onClick={() => copyToClipboard(soap)}
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-all"
               >
-                📋 Copy to Dentrix
+                📋 Copy to EHR
               </button>
               <button
                 onClick={() => {

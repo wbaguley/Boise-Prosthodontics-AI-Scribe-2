@@ -10,7 +10,7 @@ The Edit Chat feature allows real-time conversation with AI to modify and enhanc
 - The SOAP note will appear in the bottom section of the interface
 
 ### 2. Open Edit Chat
-- Click the "💬 Edit Chat" button next to "Copy to Dentrix"
+- Click the "💬 Edit Chat" button next to "Copy to EHR"
 - This opens a split view with the SOAP note on the left and chat interface on the right
 
 ### 3. Interact with AI

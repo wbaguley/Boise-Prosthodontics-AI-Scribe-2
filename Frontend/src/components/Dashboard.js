@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import VoiceProfile from './Voiceprofile';
+import SimpleTemplateEditor from './SimpleTemplateEditor';
 
 const API_URL = process.env.REACT_APP_API_URL || '';
 
@@ -25,6 +26,8 @@ const Dashboard = ({ onNavigate }) => {
   const [showTemplateManager, setShowTemplateManager] = useState(false);
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
+  // Simple template editor state
+  const [simpleEditingTemplateId, setSimpleEditingTemplateId] = useState(null);
   const [newTemplate, setNewTemplate] = useState({
     id: '',
     name: '',
@@ -119,6 +122,43 @@ const Dashboard = ({ onNavigate }) => {
     event.target.value = '';
   };
 
+  const getFileIcon = (fileName) => {
+    const extension = fileName.split('.').pop().toLowerCase();
+    switch (extension) {
+      case 'pdf':
+        return '📄';
+      case 'doc':
+      case 'docx':
+        return '📝';
+      case 'txt':
+        return '📄';
+      case 'md':
+        return '📋';
+      default:
+        return '📁';
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = Array.from(e.dataTransfer.files);
+    files.forEach(file => {
+      setUploadedFiles(prev => [...prev, {
+        id: Date.now() + Math.random(),
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        uploadDate: new Date().toLocaleDateString()
+      }]);
+    });
+  };
+
   const handleBrowseFiles = () => {
     fileInputRef.current?.click();
   };
@@ -127,8 +167,30 @@ const Dashboard = ({ onNavigate }) => {
     setShowAllMemories(true);
   };
 
-  const deleteMemory = (memoryId) => {
-    setAiMemories(prev => prev.filter(memory => memory.id !== memoryId));
+  const deleteUploadedFile = (fileId) => {
+    setUploadedFiles(prev => prev.filter(file => file.id !== fileId));
+  };
+
+  const deleteMemory = async (memoryId) => {
+    if (!window.confirm('Are you sure you want to delete this memory? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/knowledge-articles/${memoryId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        await fetchKnowledgeArticles(); // Refresh the list
+        alert('Memory deleted successfully');
+      } else {
+        alert('Failed to delete memory');
+      }
+    } catch (error) {
+      console.error('Error deleting memory:', error);
+      alert('Failed to delete memory');
+    }
   };
 
   const updateAIMemory = async (memoryData) => {
@@ -144,15 +206,7 @@ const Dashboard = ({ onNavigate }) => {
       });
 
       if (response.ok) {
-        // Update the local state
-        setAiMemories(prev => 
-          prev.map(memory => 
-            memory.id === memoryData.id 
-              ? { ...memory, ...memoryData }
-              : memory
-          )
-        );
-        // Also refresh knowledge articles if they're being used
+        // Refresh knowledge articles to reflect the changes
         await fetchKnowledgeArticles();
         return true;
       } else {
@@ -322,21 +376,41 @@ const Dashboard = ({ onNavigate }) => {
       return;
     }
 
+    console.log('Updating template:', editingTemplate.id);
+    console.log('Current newTemplate state:', newTemplate);
+    console.log('AI Instructions being sent:', newTemplate.ai_instructions);
+    console.log('Sections being sent:', newTemplate.sections);
+    console.log('Template data JSON:', JSON.stringify(newTemplate, null, 2));
+
     try {
+      // Create the update payload - only include sections if they were modified
+      const updatePayload = {
+        name: newTemplate.name,
+        description: newTemplate.description,
+        ai_instructions: newTemplate.ai_instructions,
+        // Include sections and flag to update them
+        sections: newTemplate.sections,
+        update_sections: true  // For now, always update sections when updating template
+      };
+      
       const response = await fetch(`${API_URL}/api/templates/${editingTemplate.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTemplate)
+        body: JSON.stringify(updatePayload)
       });
 
       if (response.ok) {
-        fetchTemplates();
+        console.log('Template updated successfully');
+        console.log('Calling fetchTemplates to refresh template list...');
+        await fetchTemplates();
+        console.log('Resetting form and closing editor...');
         resetTemplateForm();
         setShowTemplateEditor(false);
         setEditingTemplate(null);
         alert('Template updated successfully');
       } else {
         const error = await response.json();
+        console.error('Update failed with error:', error);
         alert(error.detail || 'Failed to update template');
       }
     } catch (error) {
@@ -370,10 +444,16 @@ const Dashboard = ({ onNavigate }) => {
 
   const editTemplate = async (templateId) => {
     try {
-      const response = await fetch(`${API_URL}/api/templates/${templateId}`);
+      console.log('Loading template for editing:', templateId);
+      // Add cache busting parameter to ensure fresh data
+      const response = await fetch(`${API_URL}/api/templates/${templateId}?_t=${Date.now()}`);
       if (response.ok) {
         const template = await response.json();
-        setNewTemplate({
+        console.log('Template loaded from API:', template);
+        console.log('Template AI Instructions:', template.ai_instructions);
+        console.log('Template Sections:', template.sections);
+        
+        const newTemplateData = {
           id: templateId,
           name: template.name || '',
           description: template.description || '',
@@ -384,9 +464,14 @@ const Dashboard = ({ onNavigate }) => {
             ASSESSMENT: [],
             PLAN: []
           }
-        });
+        };
+        
+        console.log('Setting newTemplate state to:', newTemplateData);
+        setNewTemplate(newTemplateData);
         setEditingTemplate({ id: templateId, name: template.name });
         setShowTemplateEditor(true);
+      } else {
+        console.error('Failed to load template, response:', response);
       }
     } catch (error) {
       console.error('Error loading template:', error);
@@ -413,24 +498,38 @@ const Dashboard = ({ onNavigate }) => {
   const addSectionItem = (sectionName) => {
     const newItem = prompt(`Add new ${sectionName} item:`);
     if (newItem && newItem.trim()) {
-      setNewTemplate(prev => ({
-        ...prev,
-        sections: {
-          ...prev.sections,
-          [sectionName]: [...prev.sections[sectionName], newItem.trim()]
-        }
-      }));
+      console.log(`Adding item "${newItem.trim()}" to section ${sectionName}`);
+      console.log('Current sections before adding:', newTemplate.sections);
+      
+      setNewTemplate(prev => {
+        const updated = {
+          ...prev,
+          sections: {
+            ...prev.sections,
+            [sectionName]: [...prev.sections[sectionName], newItem.trim()]
+          }
+        };
+        console.log('Updated sections after adding:', updated.sections);
+        return updated;
+      });
     }
   };
 
   const removeSectionItem = (sectionName, index) => {
-    setNewTemplate(prev => ({
-      ...prev,
-      sections: {
-        ...prev.sections,
-        [sectionName]: prev.sections[sectionName].filter((_, i) => i !== index)
-      }
-    }));
+    console.log(`Removing item at index ${index} from section ${sectionName}`);
+    console.log('Current sections before removing:', newTemplate.sections);
+    
+    setNewTemplate(prev => {
+      const updated = {
+        ...prev,
+        sections: {
+          ...prev.sections,
+          [sectionName]: prev.sections[sectionName].filter((_, i) => i !== index)
+        }
+      };
+      console.log('Updated sections after removing:', updated.sections);
+      return updated;
+    });
   };
 
   const getStatusColor = (status) => {
@@ -699,6 +798,18 @@ const Dashboard = ({ onNavigate }) => {
             </div>
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <button
+                onClick={() => onNavigate && onNavigate('recording')}
+                className="w-full sm:w-auto px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 text-sm font-semibold"
+              >
+                ▶️ Start New Session
+              </button>
+              <button
+                onClick={() => onNavigate && onNavigate('session-history')}
+                className="w-full sm:w-auto px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm font-semibold"
+              >
+                📋 View All Sessions
+              </button>
+              <button
                 onClick={() => setShowAITraining(true)}
                 className="w-full sm:w-auto px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2 text-sm"
               >
@@ -716,44 +827,6 @@ const Dashboard = ({ onNavigate }) => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        {/* Quick Actions - Mobile First */}
-        <div className="mb-8">
-          <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8">
-            <h2 className="text-xl font-semibold mb-6 text-gray-800">Quick Actions</h2>
-            
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
-              <button
-                onClick={() => onNavigate && onNavigate('recording')}
-                className="flex-1 py-4 sm:py-6 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-base sm:text-lg font-semibold transition-all transform hover:scale-105"
-              >
-                Start New Session
-              </button>
-
-              <button
-                onClick={() => onNavigate && onNavigate('session-history')}
-                className="flex-1 py-3 sm:py-4 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold transition-all"
-              >
-                📋 View All Sessions
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm text-gray-600">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                <span>Real-time transcription</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                <span>Speaker identification</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-                <span>Auto SOAP generation</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* System Status Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 mb-8">
           <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
@@ -1081,22 +1154,7 @@ const Dashboard = ({ onNavigate }) => {
                         </div>
                         <div className="flex gap-2">
                           <button
-                            onClick={() => {
-                              setEditingTemplate(template);
-                              setNewTemplate({
-                                id: template.id,
-                                name: template.name,
-                                description: template.description,
-                                ai_instructions: template.ai_instructions || '',
-                                sections: template.sections || {
-                                  SUBJECTIVE: [],
-                                  OBJECTIVE: [],
-                                  ASSESSMENT: [],
-                                  PLAN: []
-                                }
-                              });
-                              setShowTemplateEditor(true);
-                            }}
+                            onClick={() => setSimpleEditingTemplateId(template.id)}
                             className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
                           >
                             Edit
@@ -1423,7 +1481,12 @@ const Dashboard = ({ onNavigate }) => {
                   {/* Upload Section */}
                   <div className="mb-6">
                     <h5 className="font-medium mb-2">Upload Documents</h5>
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-purple-400 transition-colors">
+                    <div 
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-purple-400 hover:bg-purple-50 transition-colors cursor-pointer"
+                      onDragOver={handleDragOver}
+                      onDrop={handleDrop}
+                      onClick={handleBrowseFiles}
+                    >
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -1432,29 +1495,43 @@ const Dashboard = ({ onNavigate }) => {
                         onChange={handleFileUpload}
                         className="hidden"
                       />
-                      <div className="text-gray-500 text-sm">
-                        <div className="text-2xl mb-2">📄</div>
-                        Drag & drop files here or
-                        <button 
-                          className="text-purple-500 underline ml-1 hover:text-purple-700"
-                          onClick={handleBrowseFiles}
-                        >
-                          click to browse
-                        </button>
+                      <div className="text-gray-500">
+                        <div className="text-3xl mb-3">📄</div>
+                        <div className="text-sm font-medium mb-1">Drop files here or click to browse</div>
+                        <div className="text-xs text-gray-400">
+                          Supports PDF, DOC, DOCX, TXT, MD files
+                        </div>
                       </div>
                     </div>
                     
                     {/* Show uploaded files */}
                     {uploadedFiles.length > 0 && (
                       <div className="mt-3 space-y-2">
+                        <div className="text-xs text-gray-600 mb-2">Uploaded Documents ({uploadedFiles.length})</div>
                         {uploadedFiles.map(file => (
-                          <div key={file.id} className="flex items-center justify-between p-2 bg-purple-50 rounded text-sm">
-                            <div className="flex items-center gap-2">
-                              <span className="text-purple-600">📄</span>
-                              <span className="font-medium">{file.name}</span>
-                              <span className="text-gray-500">({(file.size / 1024).toFixed(1)} KB)</span>
+                          <div key={file.id} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-100 hover:bg-purple-100 transition-colors">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-purple-600 text-lg">{getFileIcon(file.name)}</span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm text-gray-800 truncate" title={file.name}>
+                                    {file.name}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {(file.size / 1024).toFixed(1)} KB • {file.uploadDate}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                            <span className="text-xs text-gray-500">{file.uploadDate}</span>
+                            <button
+                              onClick={() => deleteUploadedFile(file.id)}
+                              className="flex-shrink-0 ml-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                              title="Delete document"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -1641,6 +1718,18 @@ const Dashboard = ({ onNavigate }) => {
           </div>
         </div>
       )}
+      
+      {/* Simple Template Editor */}
+      {simpleEditingTemplateId && (
+        <SimpleTemplateEditor
+          templateId={simpleEditingTemplateId}
+          onClose={() => {
+            setSimpleEditingTemplateId(null);
+            fetchTemplates(); // Refresh template list
+          }}
+        />
+      )}
+      
       {/* Configuration Management Modal */}
       {showConfigManager && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -2008,7 +2097,7 @@ const Dashboard = ({ onNavigate }) => {
 
       {/* Knowledge Article Editor Modal */}
       {showArticleEditor && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4" style={{zIndex: 9999}}>
           <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
@@ -2172,20 +2261,32 @@ const Dashboard = ({ onNavigate }) => {
                   <h4 className="text-lg font-semibold">AI Knowledge Base</h4>
                   <p className="text-gray-600">View and manage the AI model's learned information</p>
                 </div>
-                <div className="text-sm text-gray-500">
-                  {aiMemories.length} Memory Items
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowArticleEditor(true)}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm"
+                  >
+                    ➕ Add New Memory
+                  </button>
+                  <div className="text-sm text-gray-500">
+                    {knowledgeArticles.length} Memory Items
+                  </div>
                 </div>
               </div>
               
               <div className="space-y-3">
-                {aiMemories.map(memory => (
+                {knowledgeArticles.map(memory => (
                   <div key={memory.id} className="border rounded-lg p-4 hover:bg-gray-50">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <h5 className="font-medium text-lg">{memory.title}</h5>
-                        <p className="text-gray-600 text-sm mt-1">Added {memory.addedDate}</p>
+                        <p className="text-gray-600 text-sm mt-1">
+                          Category: {memory.category} • Added {new Date(memory.created_at).toLocaleDateString()}
+                        </p>
                         <div className="mt-2 text-sm text-gray-700">
-                          This memory contains learned information about {memory.title.toLowerCase()} that helps the AI provide better responses during consultations.
+                          {memory.content && memory.content.length > 150 
+                            ? memory.content.substring(0, 150) + '...' 
+                            : memory.content || 'No content available'}
                         </div>
                       </div>
                       <div className="flex gap-2 ml-4">
@@ -2209,11 +2310,11 @@ const Dashboard = ({ onNavigate }) => {
                   </div>
                 ))}
                 
-                {aiMemories.length === 0 && (
+                {knowledgeArticles.length === 0 && (
                   <div className="text-center py-12 text-gray-500">
                     <div className="text-4xl mb-4">🧠</div>
                     <p>No AI memories found</p>
-                    <p className="text-sm mt-2">The AI model hasn't learned any specific information yet</p>
+                    <p className="text-sm mt-2">Click "Add New Memory" to start building the AI's knowledge base</p>
                   </div>
                 )}
               </div>
@@ -2314,7 +2415,7 @@ const Dashboard = ({ onNavigate }) => {
                         setShowMemoryEditor(false);
                         setEditingMemory(null);
                         // Refresh memories
-                        fetchAIMemories();
+                        fetchKnowledgeArticles();
                       } else {
                         alert('Failed to update memory');
                       }

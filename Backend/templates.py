@@ -150,20 +150,40 @@ class TemplateManager:
     
     def update_template(self, template_id, name=None, description=None, ai_instructions=None, sections=None):
         """Update an existing template"""
+        print(f"TemplateManager: Updating template {template_id}")
+        print(f"Parameters - name: {name}, description: {description}")
+        print(f"AI instructions length: {len(ai_instructions) if ai_instructions else 'None'}")
+        print(f"Sections parameter type: {type(sections)}")
+        print(f"Sections parameter value: {sections}")
+        
         template = self.get_template(template_id)
         if not template:
+            print(f"Template {template_id} not found")
             return None
         
-        if name:
+        print(f"Existing template sections before update: {template.get('sections', {})}")
+        
+        # Only update fields that are explicitly provided and not None
+        if name is not None:
             template["name"] = name
-        if description:
+        if description is not None:
             template["description"] = description  
-        if ai_instructions:
+        if ai_instructions is not None:
             template["ai_instructions"] = ai_instructions
-        if sections:
+        if sections is not None:
+            print(f"Updating sections from {template.get('sections', {})} to {sections}")
             template["sections"] = sections
+        else:
+            print("Sections parameter is None, keeping existing sections")
             
+        print(f"Template sections after update: {template.get('sections', {})}")
+        
         self.save_template(template_id, template)
+        
+        # Verify the template was saved correctly
+        saved_template = self.get_template(template_id)
+        print(f"Template after saving: {saved_template}")
+        
         return template
     
     def delete_template(self, template_id):

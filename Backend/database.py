@@ -44,8 +44,11 @@ class Session(Base):
     template_used = Column(String, nullable=True)
     session_metadata = Column(Text, nullable=True)
 
-# Create database
-engine = create_engine('sqlite:///sessions.db')
+# Create database in persistent data directory
+data_dir = Path("/app/data")
+data_dir.mkdir(exist_ok=True)
+
+engine = create_engine(f'sqlite:///{data_dir}/sessions.db')
 Base.metadata.create_all(engine)
 SessionLocal = sessionmaker(bind=engine)
 
@@ -458,8 +461,8 @@ def create_knowledge_article(title: str, content: str, category: str):
             'updated_at': datetime.utcnow().isoformat()
         }
         
-        # For now, we'll store in a simple JSON file
-        articles_file = Path('knowledge_articles.json')
+        # Store in persistent data directory
+        articles_file = data_dir / 'knowledge_articles.json'
         articles = []
         if articles_file.exists():
             with open(articles_file, 'r') as f:
@@ -480,7 +483,7 @@ def create_knowledge_article(title: str, content: str, category: str):
 def get_all_knowledge_articles():
     """Get all knowledge articles"""
     try:
-        articles_file = Path('knowledge_articles.json')
+        articles_file = data_dir / 'knowledge_articles.json'
         if articles_file.exists():
             with open(articles_file, 'r') as f:
                 return json.load(f)
@@ -492,7 +495,7 @@ def get_all_knowledge_articles():
 def delete_knowledge_article(article_id: str):
     """Delete a knowledge article"""
     try:
-        articles_file = Path('knowledge_articles.json')
+        articles_file = data_dir / 'knowledge_articles.json'
         if articles_file.exists():
             with open(articles_file, 'r') as f:
                 articles = json.load(f)
@@ -511,7 +514,7 @@ def delete_knowledge_article(article_id: str):
 def update_knowledge_article(article_id: str, title: str, content: str, category: str):
     """Update a knowledge article"""
     try:
-        articles_file = Path('knowledge_articles.json')
+        articles_file = data_dir / 'knowledge_articles.json'
         if articles_file.exists():
             with open(articles_file, 'r') as f:
                 articles = json.load(f)

@@ -22,15 +22,17 @@ RUN mkdir -p /app/models \
     /app/logs \
     /tmp/audio \
     /app/soap_templates \
-    /app/voice_profiles
+    /app/voice_profiles \
+    /app/data
 
-# Initialize database on container start
+# Copy initialization scripts
 COPY init_database.py ./
+COPY init_data_structure.py ./
 
 ENV PYTHONUNBUFFERED=1
 ENV OLLAMA_HOST=http://ollama:11434
 
 EXPOSE 3051
 
-# Run database initialization and then start the server
-CMD python init_database.py && uvicorn main:app --host 0.0.0.0 --port 3051 --reload
+# Run data structure and database initialization, then start the server
+CMD python init_data_structure.py && python init_database.py && uvicorn main:app --host 0.0.0.0 --port 3051 --reload

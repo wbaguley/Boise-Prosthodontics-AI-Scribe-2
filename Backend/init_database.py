@@ -36,10 +36,9 @@ def init_database():
             voice_status = "🎤" if provider['has_voice_profile'] else "❌"
             print(f"  - {provider['name']} {voice_status}")
         
-        response = input("\nDo you want to add default providers anyway? (y/n): ")
-        if response.lower() != 'y':
-            print("Skipping default provider creation")
-            return
+        print("Skipping default provider creation - providers already exist")
+        print("✅ Database initialization complete!")
+        return
     
     # Create default providers
     print("\n📝 Creating default providers...")
@@ -91,11 +90,7 @@ def init_database():
 def reset_database():
     """Drop all tables and recreate (CAUTION: deletes all data)"""
     print("⚠️  WARNING: This will delete ALL data in the database!")
-    response = input("Are you sure you want to continue? Type 'YES' to confirm: ")
-    
-    if response != 'YES':
-        print("Aborted")
-        return
+    print("Reset function called - this should only be used for development")
     
     print("Dropping all tables...")
     Base.metadata.drop_all(engine)

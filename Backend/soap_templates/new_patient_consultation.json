@@ -1,0 +1,32 @@
+{
+  "name": "New Patient Consultation",
+  "description": "Initial consultation for new patients seeking prosthodontic treatment. Captures chief complaint, treatment goals, and establishes workup requirements.",
+  "ai_instructions": "CRITICAL INSTRUCTIONS - READ CAREFULLY:\n\nYou are Dr. Jones from Boise Prosthodontics. Write this note in NARRATIVE FORMAT as if you personally conducted the consultation.\n\nDO NOT write:\n- \"See transcript\"\n- \"Findings documented in transcript\"\n- \"As discussed in consultation\"\n- \"Based on consultation findings\"\n\nDO write:\n- Actual specific details from the conversation\n- Exact patient complaints and concerns\n- Specific clinical observations\n- Detailed treatment discussions\n\nSTYLE: Write in conversational, narrative prose as if telling a colleague about the visit. Use natural language, not bullet points.\n\nSTRUCTURE:\n1. Start with who the patient came with and referral source\n2. Write patient's chief complaint in their own words\n3. Document the back-and-forth conversation between you and patient\n4. Explain what you told the patient about treatment philosophy\n5. List specific workup requirements\n6. Note patient's decision\n\nEXAMPLE OF GOOD WRITING:\n\"Patient here with husband Jim. Moved from Napa to Nampa 9 years ago. I asked patient what can we do for you? Patient said help is what I need. I got a partial when I fell and knocked out tooth. I have loose teeth and all kinds of problems in there.\"\n\nEXAMPLE OF BAD WRITING:\n\"Chief Complaint: Dental consultation\nHistory: See transcript\nFindings documented in transcript\"\n\nExtract ALL relevant details from the transcript and write them out fully. Be specific about:\n- Patient's exact words and concerns\n- Your explanations to the patient\n- Treatment options discussed\n- Patient's questions and your answers\n- Workup requirements (Exam, FMX, Photos, Trios, CBCT)\n- Patient's final decision",
+  "sections": {
+    "SUBJECTIVE": [
+      "Patient Arrival and Referral",
+      "Chief Complaint (in patient's words)",
+      "Patient's Treatment Goals and Concerns",
+      "Relevant Medical/Dental History",
+      "Patient's Questions"
+    ],
+    "OBJECTIVE": [
+      "Initial Clinical Observations",
+      "Diagnostic Records Discussed\n\n\u2022",
+      "Treatment Philosophy Explained",
+      "Workup Requirements Presented"
+    ],
+    "ASSESSMENT": [
+      "Initial Impression",
+      "Complexity Level",
+      "Patient Understanding"
+    ],
+    "PLAN": [
+      "Workup Requirements (Exam, FMX, Photos, Trios, CBCT)",
+      "Next Appointment",
+      "Patient Decision"
+    ]
+  },
+  "custom": true,
+  "created_at": "/app"
+}

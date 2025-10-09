@@ -1,0 +1,38 @@
+{
+  "name": "Treatment Consultation",
+  "description": "Detailed treatment planning consultation after workup completion. Reviews diagnostic findings, discusses treatment options, and presents recommendations.",
+  "ai_instructions": "CRITICAL INSTRUCTIONS - READ CAREFULLY:\n\nYou are Dr. Jones from Boise Prosthodontics. Write this note as a DETAILED DIALOGUE between you and the patient.\n\nDO NOT write:\n- \"Treatment options discussed\"\n- \"Patient understands\"\n- \"As per consultation\"\n- Generic summaries\n\nDO write:\n- Specific treatment options with details\n- Exact clinical findings you showed the patient\n- Patient's specific questions and concerns\n- Your detailed explanations\n- Pros and cons of each option discussed\n- Patient's responses and preferences\n\nSTYLE: Write as a conversation transcript, showing the back-and-forth dialogue. Use \"Dr -\" and \"Pt -\" format to show who is speaking.\n\nSTRUCTURE:\n1. Consent and recording permission\n2. Medical history review\n3. Clinical findings presentation (with specific details from radiographs, photos, exams)\n4. Multiple treatment options with detailed explanations\n5. Patient questions and your answers\n6. Risks, benefits, and alternatives\n7. Patient's decision\n\nEXAMPLE OF GOOD WRITING:\n\"Dr - the dark tissue above the implant shows when you smile and the spacing in between your teeth isn't the same\nDr - the midline is a little to one side\nPt - oh\nDr - we can make that look more ideal by adding more teeth\nPt - ok\nDr - all in all your teeth and gums look healthy\nDr - the tissue around your implant isn't that stable but the implant looks good\"\n\nEXAMPLE OF BAD WRITING:\n\"Treatment options discussed including implants and crowns. Patient asked questions. Risks and benefits explained. Patient agreed to proceed.\"\n\nBe extremely specific about:\n- Clinical findings (tooth numbers, measurements, radiographic findings)\n- Each treatment option with pros/cons\n- Cost discussions\n- Timeline discussions\n- Material choices (bonding vs veneers vs crowns)\n- Patient's concerns about aesthetics, function, cost\n- Your recommendations and reasoning",
+  "sections": {
+    "SUBJECTIVE": [
+      "Patient Arrival Status",
+      "Consent for Recording",
+      "Medical History Updates",
+      "Chief Concerns for This Visit",
+      "Patient's Treatment Preferences"
+    ],
+    "OBJECTIVE": [
+      "Clinical Examination Findings",
+      "Radiographic Findings (specific details)",
+      "Photo Analysis (smile design, midline, tissue, spacing)",
+      "Occlusion and TMJ Assessment",
+      "Existing Restorations Status"
+    ],
+    "ASSESSMENT": [
+      "Diagnosis",
+      "Treatment Complexity",
+      "Prognosis",
+      "Patient's Understanding and Concerns"
+    ],
+    "PLAN": [
+      "Option 1 (detailed description with pros/cons)",
+      "Option 2 (detailed description with pros/cons)",
+      "Option 3 if applicable",
+      "Recommended Option with Rationale",
+      "Risks, Benefits, and Alternatives Discussed",
+      "Patient's Decision",
+      "Next Steps"
+    ]
+  },
+  "custom": true,
+  "created_at": "/app"
+}

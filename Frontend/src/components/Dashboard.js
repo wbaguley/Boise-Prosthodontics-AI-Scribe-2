@@ -657,22 +657,22 @@ const Dashboard = ({ onNavigate }) => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}
       <div className="bg-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">Boise Prosthodontics AI Scribe</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Boise Prosthodontics AI Scribe</h1>
               <p className="text-sm text-gray-600 mt-1">Dashboard</p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <button
                 onClick={() => setShowAITraining(true)}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+                className="w-full sm:w-auto px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2 text-sm"
               >
                 🤖 AI Training
               </button>
               <button
                 onClick={() => setShowSettings(true)}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2"
+                className="w-full sm:w-auto px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm"
               >
                 Settings
               </button>
@@ -681,83 +681,84 @@ const Dashboard = ({ onNavigate }) => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* System Status Cards */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-600">Whisper Status</h3>
-              <div className={`w-3 h-3 rounded-full ${getStatusColor(systemStatus.whisper)}`}></div>
-            </div>
-            <p className="text-2xl font-bold text-gray-800">{getStatusText(systemStatus.whisper)}</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-600">Ollama (AI)</h3>
-              <div className={`w-3 h-3 rounded-full ${getStatusColor(systemStatus.ollama)}`}></div>
-            </div>
-            <p className="text-2xl font-bold text-gray-800">{getStatusText(systemStatus.ollama)}</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-600">Voice Profiles</h3>
-              <div className={`w-3 h-3 rounded-full ${getStatusColor(systemStatus.voice_profiles)}`}></div>
-            </div>
-            <p className="text-2xl font-bold text-gray-800">{providers.filter(p => p.has_voice_profile).length}/{providers.length}</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-600">Total Sessions</h3>
-              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-            </div>
-            <p className="text-2xl font-bold text-gray-800">{sessions.length}</p>
-          </div>
-        </div>
-
-        {/* Main Content Grid */}
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Start Session Button */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-lg p-8">
-              <h2 className="text-xl font-semibold mb-6 text-gray-800">Quick Actions</h2>
-              
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {/* Quick Actions - Mobile First */}
+        <div className="mb-8">
+          <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8">
+            <h2 className="text-xl font-semibold mb-6 text-gray-800">Quick Actions</h2>
+            
+            <div className="flex flex-col sm:flex-row gap-4 mb-6">
               <button
                 onClick={() => onNavigate && onNavigate('recording')}
-                className="w-full py-6 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-lg font-semibold mb-4 transition-all transform hover:scale-105"
+                className="flex-1 py-4 sm:py-6 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-base sm:text-lg font-semibold transition-all transform hover:scale-105"
               >
                 Start New Session
               </button>
 
               <button
                 onClick={() => onNavigate && onNavigate('session-history')}
-                className="w-full py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold mb-4 transition-all"
+                className="flex-1 py-3 sm:py-4 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold transition-all"
               >
                 📋 View All Sessions
               </button>
+            </div>
 
-              <div className="space-y-3 text-sm text-gray-600">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                  <span>Real-time transcription</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                  <span>Speaker identification</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-                  <span>Auto SOAP generation</span>
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm text-gray-600">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                <span>Real-time transcription</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                <span>Speaker identification</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                <span>Auto SOAP generation</span>
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Recent Sessions */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl shadow-lg p-6">
+        {/* System Status Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 mb-8">
+          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs sm:text-sm font-medium text-gray-600">Whisper Status</h3>
+              <div className={`w-3 h-3 rounded-full ${getStatusColor(systemStatus.whisper)}`}></div>
+            </div>
+            <p className="text-lg sm:text-2xl font-bold text-gray-800">{getStatusText(systemStatus.whisper)}</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs sm:text-sm font-medium text-gray-600">Ollama (AI)</h3>
+              <div className={`w-3 h-3 rounded-full ${getStatusColor(systemStatus.ollama)}`}></div>
+            </div>
+            <p className="text-lg sm:text-2xl font-bold text-gray-800">{getStatusText(systemStatus.ollama)}</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs sm:text-sm font-medium text-gray-600">Voice Profiles</h3>
+              <div className={`w-3 h-3 rounded-full ${getStatusColor(systemStatus.voice_profiles)}`}></div>
+            </div>
+            <p className="text-lg sm:text-2xl font-bold text-gray-800">{providers.filter(p => p.has_voice_profile).length}/{providers.length}</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs sm:text-sm font-medium text-gray-600">Total Sessions</h3>
+              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+            </div>
+            <p className="text-lg sm:text-2xl font-bold text-gray-800">{sessions.length}</p>
+          </div>
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid lg:grid-cols-1 gap-8">
+          {/* Recent Sessions - Full Width */}
+          <div className="bg-white rounded-xl shadow-lg p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold text-gray-800">Recent Sessions</h2>
                 <button
@@ -824,7 +825,6 @@ const Dashboard = ({ onNavigate }) => {
                 </div>
               )}
             </div>
-          </div>
         </div>
       </div>
 

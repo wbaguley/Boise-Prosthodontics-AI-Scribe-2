@@ -428,41 +428,46 @@ What would you like to change about the SOAP note?`,
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header with Home Button */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <div className="flex justify-between items-start">
-            <div className="flex-1">
-              <div className="flex items-center gap-4">
-                <h1 className="text-3xl font-bold text-gray-800">
+        <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-6">
+          <div className="flex flex-col gap-4">
+            {/* Title and Home Button Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
                   Recording Session
                 </h1>
-                <button
-                  onClick={() => onNavigate && onNavigate('dashboard')}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm font-medium"
-                >
-                  Home
-                </button>
-              </div>
-              <div className="text-sm text-gray-600 flex items-center gap-4 mt-2">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${
-                    connectionStatus === 'connected' ? 'bg-green-500' : 
-                    connectionStatus === 'error' ? 'bg-red-500' : 'bg-yellow-500'
-                  }`}></div>
-                  <span>{status}</span>
+                <div className="text-sm text-gray-600 flex flex-wrap items-center gap-2 sm:gap-4 mt-2">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${
+                      connectionStatus === 'connected' ? 'bg-green-500' : 
+                      connectionStatus === 'error' ? 'bg-red-500' : 'bg-yellow-500'
+                    }`}></div>
+                    <span>{status}</span>
+                  </div>
+                  {sessionId && (
+                    <>
+                      <span className="hidden sm:inline">|</span>
+                      <span>Session: {sessionId}</span>
+                      <span className="hidden sm:inline">|</span>
+                      <span>{sessionDate}</span>
+                    </>
+                  )}
                 </div>
-                {sessionId && (
-                  <>
-                    <span>Session: {sessionId}</span>
-                    <span>{sessionDate}</span>
-                  </>
-                )}
               </div>
+              
+              <button
+                onClick={() => onNavigate && onNavigate('dashboard')}
+                className="w-full sm:w-auto px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm font-medium"
+              >
+                Home
+              </button>
             </div>
             
-            <div className="flex flex-col sm:flex-row gap-4">
+            {/* Provider and Template Selection */}
+            <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-gray-200">
               <div className="w-full sm:w-auto">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Provider
@@ -523,7 +528,7 @@ What would you like to change about the SOAP note?`,
         <div className="grid lg:grid-cols-2 gap-6">
           <div className="space-y-6">
             {/* Recording Control */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
+            <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
               <h2 className="text-xl font-semibold mb-4">Recording Control</h2>
               <button
                 onClick={isRecording ? stopRecording : startRecording}

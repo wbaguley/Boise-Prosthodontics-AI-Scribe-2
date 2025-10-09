@@ -131,6 +131,40 @@ const Dashboard = ({ onNavigate }) => {
     setAiMemories(prev => prev.filter(memory => memory.id !== memoryId));
   };
 
+  const updateAIMemory = async (memoryData) => {
+    try {
+      const response = await fetch(`${API_URL}/api/knowledge-articles/${memoryData.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: memoryData.title,
+          content: memoryData.content,
+          category: memoryData.category
+        })
+      });
+
+      if (response.ok) {
+        // Update the local state
+        setAiMemories(prev => 
+          prev.map(memory => 
+            memory.id === memoryData.id 
+              ? { ...memory, ...memoryData }
+              : memory
+          )
+        );
+        // Also refresh knowledge articles if they're being used
+        await fetchKnowledgeArticles();
+        return true;
+      } else {
+        console.error('Failed to update memory');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error updating memory:', error);
+      return false;
+    }
+  };
+
   useEffect(() => {
     fetchSystemStatus();
     fetchSessions();
@@ -1050,9 +1084,16 @@ const Dashboard = ({ onNavigate }) => {
                             onClick={() => {
                               setEditingTemplate(template);
                               setNewTemplate({
+                                id: template.id,
                                 name: template.name,
                                 description: template.description,
-                                content: template.content
+                                ai_instructions: template.ai_instructions || '',
+                                sections: template.sections || {
+                                  SUBJECTIVE: [],
+                                  OBJECTIVE: [],
+                                  ASSESSMENT: [],
+                                  PLAN: []
+                                }
                               });
                               setShowTemplateEditor(true);
                             }}
@@ -1543,7 +1584,7 @@ const Dashboard = ({ onNavigate }) => {
               <div>
                 <h4 className="text-lg font-semibold mb-4">SOAP Template Structure</h4>
                 <div className="grid md:grid-cols-2 gap-6">
-                  {Object.entries(newTemplate.sections).map(([sectionName, items]) => (
+                  {Object.entries(newTemplate.sections || {}).map(([sectionName, items]) => (
                     <div key={sectionName} className="bg-gray-50 rounded-lg p-4">
                       <div className="flex justify-between items-center mb-3">
                         <h5 className="font-medium text-gray-800">{sectionName}</h5>
@@ -2175,6 +2216,117 @@ const Dashboard = ({ onNavigate }) => {
                     <p className="text-sm mt-2">The AI model hasn't learned any specific information yet</p>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Memory Editor Modal */}
+      {showMemoryEditor && editingMemory && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-2xl font-semibold">Edit Memory: {editingMemory.title}</h3>
+                <button
+                  onClick={() => {
+                    setShowMemoryEditor(false);
+                    setEditingMemory(null);
+                  }}
+                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Memory Title
+                  </label>
+                  <input
+                    type="text"
+                    value={editingMemory.title}
+                    onChange={(e) => setEditingMemory({...editingMemory, title: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter memory title"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Memory Content
+                  </label>
+                  <textarea
+                    value={editingMemory.content || `This memory contains learned information about ${editingMemory.title.toLowerCase()} that helps the AI provide better responses during consultations.`}
+                    onChange={(e) => setEditingMemory({...editingMemory, content: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    rows="8"
+                    placeholder="Enter detailed information for the AI to remember..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Category/Tags
+                  </label>
+                  <input
+                    type="text"
+                    value={editingMemory.category || 'General'}
+                    onChange={(e) => setEditingMemory({...editingMemory, category: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., Procedures, Guidelines, Protocols"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6 pt-6 border-t">
+                <button
+                  onClick={() => {
+                    setShowMemoryEditor(false);
+                    setEditingMemory(null);
+                  }}
+                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      // Call API to update memory
+                      const response = await fetch(`${API_URL}/api/knowledge-articles/${editingMemory.id}`, {
+                        method: 'PUT',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          title: editingMemory.title,
+                          content: editingMemory.content,
+                          category: editingMemory.category || 'General'
+                        }),
+                      });
+
+                      if (response.ok) {
+                        alert('Memory updated successfully!');
+                        setShowMemoryEditor(false);
+                        setEditingMemory(null);
+                        // Refresh memories
+                        fetchAIMemories();
+                      } else {
+                        alert('Failed to update memory');
+                      }
+                    } catch (error) {
+                      console.error('Error updating memory:', error);
+                      alert('Error updating memory');
+                    }
+                  }}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                >
+                  Save Changes
+                </button>
               </div>
             </div>
           </div>

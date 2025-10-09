@@ -5,9 +5,9 @@ class TemplateManager:
     def __init__(self):
         self.templates_dir = Path("soap_templates")
         self.templates_dir.mkdir(exist_ok=True)
-        self.create_default_templates()
+        # Removed automatic default template creation - templates are now created only through the app
         
-    def create_default_templates(self):
+    def create_default_templates_DISABLED(self):
         """Create default SOAP templates if they don't exist"""
         
         # Work Up Template

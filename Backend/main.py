@@ -1741,6 +1741,25 @@ async def delete_knowledge_article_endpoint(article_id: str):
         logging.error(f"Error deleting knowledge article: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete knowledge article")
 
+@app.put("/api/knowledge-articles/{article_id}")
+async def update_knowledge_article_endpoint(article_id: str, article: KnowledgeArticle):
+    """Update a knowledge article"""
+    try:
+        from database import update_knowledge_article
+        result = update_knowledge_article(
+            article_id=article_id,
+            title=article.title,
+            content=article.content,
+            category=article.category
+        )
+        if result:
+            return result
+        else:
+            raise HTTPException(status_code=404, detail="Article not found")
+    except Exception as e:
+        logging.error(f"Error updating knowledge article: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update knowledge article")
+
 @app.post("/api/ai-training/chat")
 async def ai_training_chat(request: TrainingChatRequest):
     """Chat with AI for training purposes"""

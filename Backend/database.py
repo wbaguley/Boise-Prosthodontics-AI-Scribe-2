@@ -508,6 +508,33 @@ def delete_knowledge_article(article_id: str):
         print(f"Error deleting knowledge article: {e}")
         return False
 
+def update_knowledge_article(article_id: str, title: str, content: str, category: str):
+    """Update a knowledge article"""
+    try:
+        articles_file = Path('knowledge_articles.json')
+        if articles_file.exists():
+            with open(articles_file, 'r') as f:
+                articles = json.load(f)
+            
+            # Find and update the article
+            for article in articles:
+                if article['id'] == article_id:
+                    article['title'] = title
+                    article['content'] = content
+                    article['category'] = category
+                    article['updated_at'] = datetime.utcnow().isoformat()
+                    
+                    with open(articles_file, 'w') as f:
+                        json.dump(articles, f, indent=2)
+                    
+                    return article
+            
+            return None  # Article not found
+        return None
+    except Exception as e:
+        print(f"Error updating knowledge article: {e}")
+        return None
+
 def get_knowledge_articles_by_category(category: str):
     """Get knowledge articles by category"""
     try:

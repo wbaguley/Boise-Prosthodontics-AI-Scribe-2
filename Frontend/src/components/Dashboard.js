@@ -2077,9 +2077,20 @@ const Dashboard = ({ onNavigate }) => {
                             disabled={isTrainingChat}
                           />
                           <button
-                            onClick={sendTrainingMessage}
+                            type="button"
+                            onClick={(e) => {
+                              console.log('🔥 BUTTON CLICKED!', { 
+                                chatInput, 
+                                isTrainingChat, 
+                                disabled: isTrainingChat || !chatInput.trim() 
+                              });
+                              e.preventDefault();
+                              alert('Button clicked! Message: ' + chatInput);
+                              sendTrainingMessage();
+                            }}
                             disabled={isTrainingChat || !chatInput.trim()}
                             className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                            style={{zIndex: 1000}}
                           >
                             {isTrainingChat ? '...' : 'Send'}
                           </button>

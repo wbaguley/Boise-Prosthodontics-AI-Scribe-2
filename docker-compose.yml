@@ -1,5 +1,5 @@
 services:
-  # Ollama LLM Service
+  # Ollama LLM Service (Llama)
   ollama:
     image: ollama/ollama:latest
     container_name: boise_new_ollama
@@ -7,6 +7,24 @@ services:
       - "11435:11434"
     volumes:
       - ollama_data:/root/.ollama
+    networks:
+      - scribe_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  # Mistral LLM Service
+  mistral:
+    image: ollama/ollama:latest
+    container_name: boise_new_mistral
+    ports:
+      - "11436:11434"
+    volumes:
+      - mistral_data:/root/.ollama
     networks:
       - scribe_network
     restart: unless-stopped
@@ -34,6 +52,7 @@ services:
       - ./Backend:/app
     environment:
       - OLLAMA_HOST=http://ollama:11434
+      - MISTRAL_HOST=http://mistral:11434
       - WHISPER_MODEL=tiny
       - PYTHONUNBUFFERED=1
       - HF_TOKEN=${HF_TOKEN}
@@ -44,6 +63,7 @@ services:
     restart: unless-stopped
     depends_on:
       - ollama
+      - mistral
     command: ["sh", "-c", "python init_data_structure.py && python init_database.py && uvicorn main:app --host 0.0.0.0 --port 3051 --reload"]
     
   # Frontend React App
@@ -85,6 +105,8 @@ networks:
 
 volumes:
   ollama_data:
+    driver: local
+  mistral_data:
     driver: local
   backend_data:
     driver: local

@@ -668,18 +668,13 @@ What would you like to change about the SOAP note?`,
           </div>
         </div>
 
-        {/* Progress Bar */}
+        {/* Processing Indicator */}
         {processingProgress > 0 && processingProgress < 100 && (
           <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-            <div className="flex justify-between text-sm text-gray-600 mb-2">
-              <span className="font-medium">{processingStage}</span>
-              <span className="font-semibold">{processingProgress}%</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-3">
-              <div 
-                className="bg-blue-500 h-3 rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${processingProgress}%` }}
-              ></div>
+            <div className="flex flex-col items-center justify-center">
+              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mb-4"></div>
+              <p className="text-gray-600 font-medium text-center">{processingStage}</p>
+              <p className="text-gray-400 text-sm mt-2">Processing your recording...</p>
             </div>
           </div>
         )}

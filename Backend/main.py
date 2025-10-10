@@ -47,8 +47,27 @@ app.add_middleware(
 
 # Configuration
 OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://ollama:11434')
+MISTRAL_HOST = os.getenv('MISTRAL_HOST', 'http://mistral:11434')
+
+# Global LLM configuration - defaults to Llama
+CURRENT_LLM_MODEL = os.getenv('CURRENT_LLM_MODEL', 'llama')  # 'llama' or 'mistral'
+CURRENT_LLM_HOST = OLLAMA_HOST if CURRENT_LLM_MODEL == 'llama' else MISTRAL_HOST
 WHISPER_MODEL_SIZE = os.getenv('WHISPER_MODEL', 'tiny')
 HF_TOKEN = os.getenv('HF_TOKEN', '')
+
+# LLM Configuration Dictionary
+LLM_CONFIGS = {
+    "llama": {
+        "name": "Llama 3",
+        "model": "llama3",
+        "host": OLLAMA_HOST
+    },
+    "mistral": {
+        "name": "Mistral 7B",
+        "model": "mistral",
+        "host": MISTRAL_HOST
+    }
+}
 
 # Import database functions
 from database import (
@@ -104,6 +123,31 @@ try:
         print("[WARNING] No HF_TOKEN provided, using voice profile matching")
 except Exception as e:
     print(f"[WARNING] Speaker diarization not available: {e}")
+
+# LLM Configuration Utility Functions
+def get_current_llm_config():
+    """Get current LLM host and model configuration as dictionary"""
+    global CURRENT_LLM_MODEL, CURRENT_LLM_HOST
+    if CURRENT_LLM_MODEL == 'mistral':
+        return {
+            "host": MISTRAL_HOST,
+            "model": "mistral"
+        }
+    else:
+        return {
+            "host": OLLAMA_HOST,
+            "model": "llama3"
+        }
+
+def set_llm_model(model_type):
+    """Set the current LLM model (llama or mistral)"""
+    global CURRENT_LLM_MODEL, CURRENT_LLM_HOST
+    if model_type in ['llama', 'mistral']:
+        CURRENT_LLM_MODEL = model_type
+        CURRENT_LLM_HOST = OLLAMA_HOST if model_type == 'llama' else MISTRAL_HOST
+        os.environ['CURRENT_LLM_MODEL'] = model_type
+        return True
+    return False
 
 # Pydantic models
 class SessionInfo(BaseModel):
@@ -255,20 +299,44 @@ def convert_audio_to_wav(audio_data):
         return None
 
 def diarize_audio(audio_path):
-    """Perform speaker diarization on audio file"""
+    """Enhanced speaker diarization with better accuracy"""
     if not DIARIZATION_AVAILABLE or not DIARIZATION_PIPELINE:
         return None
     
     try:
-        diarization = DIARIZATION_PIPELINE(audio_path)
+        # Apply diarization with optimized parameters for medical conversations
+        diarization = DIARIZATION_PIPELINE(
+            audio_path,
+            min_speakers=1,
+            max_speakers=4,  # Typically doctor + patient + maybe family/staff
+        )
         
         segments = []
+        speaker_durations = {}
+        
         for turn, _, speaker in diarization.itertracks(yield_label=True):
-            segments.append({
-                'start': turn.start,
-                'end': turn.end,
-                'speaker': speaker
-            })
+            duration = turn.end - turn.start
+            
+            # Only include segments longer than 0.5 seconds to reduce noise
+            if duration >= 0.5:
+                segments.append({
+                    'start': turn.start,
+                    'end': turn.end,
+                    'speaker': speaker,
+                    'duration': duration
+                })
+                
+                # Track total speaking time per speaker
+                if speaker not in speaker_durations:
+                    speaker_durations[speaker] = 0
+                speaker_durations[speaker] += duration
+        
+        # Log speaker analysis for debugging
+        total_time = sum(speaker_durations.values())
+        logging.info(f"Speaker diarization results:")
+        for speaker, duration in speaker_durations.items():
+            percentage = (duration / total_time) * 100 if total_time > 0 else 0
+            logging.info(f"  {speaker}: {duration:.2f}s ({percentage:.1f}%)")
         
         return segments
     except Exception as e:
@@ -276,7 +344,7 @@ def diarize_audio(audio_path):
         return None
 
 def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_profile=False):
-    """Transcribe audio with speaker detection - single speaker mode"""
+    """Enhanced transcription with improved speaker detection"""
     
     if not WHISPER_AVAILABLE or not WHISPER_MODEL:
         return generate_mock_transcript()
@@ -287,20 +355,67 @@ def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_prof
             audio_path,
             language="en",
             word_timestamps=True,
-            initial_prompt="This is a dental consultation about crowns, implants, and prosthodontics."
+            initial_prompt="This is a dental consultation between a doctor and patient about crowns, implants, and prosthodontics."
         )
         
         # Get speaker diarization if available
         speaker_segments = None
+        num_speakers = 1
         
         if DIARIZATION_AVAILABLE:
             speaker_segments = diarize_audio(audio_path)
+            if speaker_segments:
+                unique_speakers = set(seg['speaker'] for seg in speaker_segments)
+                num_speakers = len(unique_speakers)
+                logging.info(f"Detected {num_speakers} unique speakers: {unique_speakers}")
         
-        # Process segments
+        # Process segments with enhanced logic
         formatted_lines = []
         
-        if speaker_segments:
-            # Map transcription to speakers using diarization
+        if speaker_segments and num_speakers > 1:
+            # Multi-speaker conversation - use diarization
+            # Determine which speaker is likely the doctor based on speech patterns
+            speaker_stats = {}
+            for segment in result.get("segments", []):
+                segment_start = segment.get("start", 0)
+                segment_end = segment.get("end", 0)
+                segment_mid = (segment_start + segment_end) / 2
+                
+                # Find speaker for this segment
+                for speaker_seg in speaker_segments:
+                    if speaker_seg['start'] <= segment_mid <= speaker_seg['end']:
+                        speaker_id = speaker_seg['speaker']
+                        if speaker_id not in speaker_stats:
+                            speaker_stats[speaker_id] = {'count': 0, 'words': 0, 'medical_terms': 0}
+                        
+                        speaker_stats[speaker_id]['count'] += 1
+                        words = segment["text"].split()
+                        speaker_stats[speaker_id]['words'] += len(words)
+                        
+                        # Count medical/dental terms to identify doctor
+                        medical_terms = ['tooth', 'crown', 'implant', 'extraction', 'root', 'canal', 'dentist', 'procedure', 'treatment', 'diagnosis', 'x-ray', 'bite', 'gum', 'enamel', 'filling', 'bridge', 'veneer', 'orthodontic', 'periodontal', 'endodontic', 'prosthodontic', 'oral', 'maxillary', 'mandibular', 'molar', 'premolar', 'incisor', 'canine']
+                        text_lower = segment["text"].lower()
+                        for term in medical_terms:
+                            speaker_stats[speaker_id]['medical_terms'] += text_lower.count(term)
+                        break
+            
+            # Determine who is the doctor (usually speaks more medical terms and longer segments)
+            doctor_speaker = None
+            if len(speaker_stats) >= 2:
+                # Find speaker with most medical terms and longer average utterances
+                best_score = -1
+                for speaker_id, stats in speaker_stats.items():
+                    avg_words = stats['words'] / max(stats['count'], 1)
+                    medical_ratio = stats['medical_terms'] / max(stats['words'], 1)
+                    score = (avg_words * 0.3) + (medical_ratio * 0.7)  # Weight medical terms higher
+                    
+                    if score > best_score:
+                        best_score = score
+                        doctor_speaker = speaker_id
+                
+                logging.info(f"Identified doctor speaker: {doctor_speaker} based on medical content analysis")
+            
+            # Map segments to speakers
             for segment in result.get("segments", []):
                 text = segment["text"].strip()
                 if not text:
@@ -311,26 +426,67 @@ def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_prof
                 segment_mid = (segment_start + segment_end) / 2
                 
                 # Find which speaker this belongs to
-                speaker = "Unknown"
+                speaker_label = "Unknown"
                 for speaker_seg in speaker_segments:
                     if speaker_seg['start'] <= segment_mid <= speaker_seg['end']:
-                        # Map speaker labels to Doctor/Patient
-                        if speaker_seg['speaker'] == 'SPEAKER_00':
-                            speaker = f"Doctor ({doctor_name})" if doctor_name else "Doctor"
+                        if speaker_seg['speaker'] == doctor_speaker:
+                            speaker_label = f"Doctor ({doctor_name})" if doctor_name else "Doctor"
                         else:
-                            speaker = "Patient"
+                            speaker_label = "Patient"
                         break
                 
-                formatted_lines.append(f"{speaker}: {text}")
+                formatted_lines.append(f"{speaker_label}: {text}")
+        
+        elif speaker_segments and num_speakers == 1:
+            # Single speaker detected - assume it's the doctor unless content suggests otherwise
+            total_text = " ".join([seg["text"] for seg in result.get("segments", [])])
+            
+            # Check for patient indicators (questions, pain descriptions, concerns)
+            patient_indicators = ['hurt', 'pain', 'sore', 'uncomfortable', 'worry', 'scared', 'question', 'how much', 'when can', 'will it hurt', 'insurance', 'cost', 'afraid', 'nervous']
+            patient_score = sum(1 for indicator in patient_indicators if indicator in total_text.lower())
+            
+            # Check for doctor indicators (medical terms, instructions, procedures)
+            doctor_indicators = ['recommend', 'procedure', 'treatment', 'diagnosis', 'examine', 'x-ray', 'extraction', 'we need to', 'I suggest', 'the treatment', 'your tooth', 'crown', 'implant', 'root canal']
+            doctor_score = sum(1 for indicator in doctor_indicators if indicator in total_text.lower())
+            
+            # Determine speaker based on content analysis
+            if doctor_score > patient_score:
+                primary_speaker = f"Doctor ({doctor_name})" if doctor_name else "Doctor"
+            else:
+                primary_speaker = "Patient"
+            
+            logging.info(f"Single speaker mode: Doctor indicators={doctor_score}, Patient indicators={patient_score}, Assigned as: {primary_speaker}")
+            
+            for segment in result.get("segments", []):
+                text = segment["text"].strip()
+                if text:
+                    formatted_lines.append(f"{primary_speaker}: {text}")
+        
         else:
-            # Single speaker mode - label everything as Doctor
-            # This is more accurate when only the doctor is speaking
+            # No diarization available - use content analysis for each segment
             for segment in result.get("segments", []):
                 text = segment["text"].strip()
                 if not text:
                     continue
                 
-                speaker_label = f"Doctor ({doctor_name})" if doctor_name else "Doctor"
+                # Analyze each segment for speaker clues
+                text_lower = text.lower()
+                
+                # Patient phrases
+                patient_clues = ['i have', 'it hurts', 'my tooth', 'i feel', 'i want', 'can you', 'will it', 'how much', 'when will', 'i am worried', 'i think', 'my pain', 'i need help']
+                
+                # Doctor phrases  
+                doctor_clues = ['let me', 'we need', 'i recommend', 'the treatment', 'your tooth', 'i see', 'we should', 'the procedure', 'i will', 'we can', 'the diagnosis', 'looking at', 'examination shows']
+                
+                patient_matches = sum(1 for clue in patient_clues if clue in text_lower)
+                doctor_matches = sum(1 for clue in doctor_clues if clue in text_lower)
+                
+                # Default to doctor if no clear indicators, or if doctor clues outweigh patient clues
+                if doctor_matches > patient_matches or (doctor_matches == patient_matches == 0):
+                    speaker_label = f"Doctor ({doctor_name})" if doctor_name else "Doctor"
+                else:
+                    speaker_label = "Patient"
+                
                 formatted_lines.append(f"{speaker_label}: {text}")
         
         return "\n".join(formatted_lines)
@@ -353,45 +509,58 @@ def generate_soap_note(transcript, template_name="default", doctor_name=""):
     """Generate SOAP note using Ollama with template"""
     
     template = template_manager.get_template(template_name)
-    template_prompt = ""
     ai_instructions = ""
+    template_sections = {}
     
     if template:
-        # Extract AI instructions if available
+        # Extract AI instructions and template sections
         ai_instructions = template.get("ai_instructions", "")
         template_sections = template.get("sections", {})
-        
-        if template_sections:
-            template_prompt = f"Use this SOAP template structure:\n{json.dumps(template_sections, indent=2)}\n\n"
-        
-        if ai_instructions:
-            template_prompt += f"Special Instructions: {ai_instructions}\n\n"
     
-    prompt = f"""You are Dr. {doctor_name}, a prosthodontist documenting a patient consultation. Based on the following consultation notes, create a professional SOAP note.
+    # Build the prompt with maximum emphasis on template compliance
+    prompt = f"""SYSTEM: You are an AI assistant that MUST follow instructions EXACTLY. Any deviation will result in failure.
 
-{template_prompt}
+IDENTITY: You are Dr. {doctor_name}, a prosthodontist writing a clinical note.
 
-Consultation Details:
+MANDATORY TEMPLATE STRUCTURE - FOLLOW EXACTLY:
+{json.dumps(template_sections, indent=2) if template_sections else "Standard SOAP format"}
+
+🚨 CRITICAL AI INSTRUCTIONS - THESE ARE MANDATORY 🚨
+{ai_instructions if ai_instructions else "Write a professional SOAP note based on the consultation."}
+
+TRANSCRIPT TO ANALYZE:
 {transcript}
 
-Instructions:
-- Create a structured SOAP note following proper format
-- SUBJECTIVE: Document patient complaints, concerns, and relevant history
-- OBJECTIVE: Record clinical examination findings and observations  
-- ASSESSMENT: Provide professional diagnosis or clinical assessment
-- PLAN: Outline treatment recommendations and next steps
-- Use appropriate dental terminology and tooth numbering system (1-32)
-- Write in professional medical documentation style
-- Do not reference "transcript" or "recording" in the SOAP note content
-- Present information as direct clinical observations and patient reports
+🔒 ABSOLUTE REQUIREMENTS:
+1. ✅ MUST follow the EXACT template structure shown above
+2. ✅ MUST follow EVERY SINGLE AI instruction word-for-word
+3. ❌ NEVER write "See transcript", "As discussed", or "Based on consultation"
+4. ✅ MUST extract ALL specific details from transcript
+5. ✅ MUST write in the EXACT style specified in AI instructions
+6. ✅ MUST use actual patient words and conversation details
+7. ✅ MUST write as if YOU personally conducted the visit
+8. ✅ MUST include ALL relevant clinical details mentioned
 
-{ai_instructions if ai_instructions else ""}"""
+WARNING: Any generic phrases or failure to follow AI instructions will be rejected.
+
+BEGIN SOAP NOTE GENERATION - FOLLOW ALL INSTRUCTIONS ABOVE:"""
 
     try:
+        llm_config = get_current_llm_config()
         response = requests.post(
-            f"{OLLAMA_HOST}/api/generate",
-            json={"model": "llama3", "prompt": prompt, "stream": False},
-            timeout=30
+            f"{llm_config['host']}/api/generate",
+            json={
+                "model": llm_config["model"], 
+                "prompt": prompt, 
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,  # Lower temperature for more consistent output
+                    "top_p": 0.9,
+                    "repeat_penalty": 1.1,
+                    "top_k": 40
+                }
+            },
+            timeout=60  # Longer timeout for more thorough processing
         )
         if response.status_code == 200:
             return response.json().get('response', generate_fallback_soap(transcript))
@@ -460,11 +629,12 @@ IMPORTANT:
 
 Generate the email with Subject: and Body: clearly marked:"""
 
-        # Call Ollama API
+        # Call LLM API
+        llm_config = get_current_llm_config()
         response = requests.post(
-            f"{OLLAMA_HOST}/api/generate",
+            f"{llm_config['host']}/api/generate",
             json={
-                "model": "llama3",
+                "model": llm_config["model"],
                 "prompt": prompt,
                 "stream": False,
                 "options": {
@@ -1130,9 +1300,10 @@ Correction Request: {request.correction}
 Apply this correction to the SOAP note and return the complete updated SOAP note. Keep all sections (SUBJECTIVE, OBJECTIVE, ASSESSMENT, PLAN) intact and only modify what was requested. Maintain the same format and structure."""
 
     try:
+        llm_config = get_current_llm_config()
         response = requests.post(
-            f"{OLLAMA_HOST}/api/generate",
-            json={"model": "llama3", "prompt": prompt, "stream": False},
+            f"{llm_config['host']}/api/generate",
+            json={"model": llm_config["model"], "prompt": prompt, "stream": False},
             timeout=30
         )
         if response.status_code == 200:
@@ -1164,9 +1335,10 @@ User message: "{request.user_message}"
 Respond with either "MODIFY" if they want to change the SOAP note, or "QUESTION" if they're just asking for information or clarification."""
     
     try:
+        llm_config = get_current_llm_config()
         analysis_response = requests.post(
-            f"{OLLAMA_HOST}/api/generate",
-            json={"model": "llama3", "prompt": analysis_prompt, "stream": False},
+            f"{llm_config['host']}/api/generate",
+            json={"model": llm_config["model"], "prompt": analysis_prompt, "stream": False},
             timeout=15
         )
         
@@ -1196,9 +1368,10 @@ Doctor's Question: {request.user_message}
 Provide a helpful response. Do not modify the SOAP note unless explicitly asked."""
         
         try:
+            llm_config = get_current_llm_config()
             response = requests.post(
-                f"{OLLAMA_HOST}/api/generate",
-                json={"model": "llama3", "prompt": question_prompt, "stream": False},
+                f"{llm_config['host']}/api/generate",
+                json={"model": llm_config["model"], "prompt": question_prompt, "stream": False},
                 timeout=30
             )
             
@@ -1246,9 +1419,10 @@ EXPLANATION:
 [Brief explanation of changes made]"""
         
         try:
+            llm_config = get_current_llm_config()
             response = requests.post(
-                f"{OLLAMA_HOST}/api/generate",
-                json={"model": "llama3", "prompt": modification_prompt, "stream": False},
+                f"{llm_config['host']}/api/generate",
+                json={"model": llm_config["model"], "prompt": modification_prompt, "stream": False},
                 timeout=30
             )
             
@@ -1368,10 +1542,22 @@ async def generate_post_visit_email_endpoint(request: EmailGenerationRequest):
             appointment_date=request.appointment_date,
             transcript=request.transcript
         )
-        return email_result
+        
+        # Return in consistent format
+        return {
+            "status": "success",
+            "email_content": email_result.get("body", ""),
+            "subject": email_result.get("subject", ""),
+            "message": "Email generated successfully"
+        }
     except Exception as e:
         logging.error(f"Email generation error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate email: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"Failed to generate email: {str(e)}",
+            "email_content": "",
+            "subject": ""
+        }
 
 @app.post("/api/lookup-patient")
 async def lookup_patient_endpoint(request: PatientLookupRequest):
@@ -1807,12 +1993,13 @@ Focus on:
 
 Respond in a professional, helpful manner:"""
 
-        # Send to Ollama
+        # Send to LLM
         try:
+            llm_config = get_current_llm_config()
             response = requests.post(
-                f"{OLLAMA_HOST}/api/generate",
+                f"{llm_config['host']}/api/generate",
                 json={
-                    "model": "llama3",
+                    "model": llm_config["model"],
                     "prompt": training_prompt,
                     "stream": False,
                     "options": {
@@ -1821,7 +2008,7 @@ Respond in a professional, helpful manner:"""
                         "num_predict": 500
                     }
                 },
-                timeout=30
+                timeout=120  # Increased timeout for model initialization
             )
             
             if response.status_code == 200:
@@ -1841,6 +2028,159 @@ Respond in a professional, helpful manner:"""
     except Exception as e:
         logging.error(f"AI training chat error: {e}")
         raise HTTPException(status_code=500, detail="Failed to process training chat")
+
+# ====== LLM MODEL MANAGEMENT ENDPOINTS ======
+
+@app.get("/api/llm/config")
+async def get_llm_config():
+    """Get current LLM configuration"""
+    try:
+        # Format current config as an object matching the frontend expectations
+        current_llm_config = get_current_llm_config()
+        formatted_config = None
+        
+        # Find the current model configuration
+        formatted_config = None
+        for model_key, config in LLM_CONFIGS.items():
+            if config["host"] == current_llm_config["host"] and config["model"] == current_llm_config["model"]:
+                formatted_config = {
+                    "key": model_key,
+                    "name": config["name"],
+                    "model": config["model"],
+                    "host": config["host"]
+                }
+                break
+        
+        return {"success": True, "config": formatted_config}
+    except Exception as e:
+        logging.error(f"Error getting LLM config: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get LLM configuration")
+
+@app.post("/api/llm/config")
+async def set_llm_config(request: dict):
+    """Set current LLM configuration"""
+    try:
+        model_name = request.get("model", "llama")
+        if model_name not in LLM_CONFIGS:
+            raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
+        
+        # Save the configuration choice to a file
+        config_path = os.path.join(os.path.dirname(__file__), "llm_config.json")
+        with open(config_path, "w") as f:
+            json.dump({"current_model": model_name}, f)
+        
+        # Update global variables
+        set_llm_model(model_name)
+        
+        # Format config as an object matching the frontend expectations
+        config_data = LLM_CONFIGS[model_name]
+        formatted_config = {
+            "key": model_name,
+            "name": config_data["name"],
+            "model": config_data["model"],
+            "host": config_data["host"]
+        }
+        
+        return {"success": True, "config": formatted_config, "message": f"LLM switched to {config_data['name']}"}
+    except Exception as e:
+        logging.error(f"Error setting LLM config: {e}")
+        raise HTTPException(status_code=500, detail="Failed to set LLM configuration")
+
+@app.get("/api/llm/models")
+async def get_available_models():
+    """Get list of available LLM models"""
+    try:
+        models = []
+        for model_key, config in LLM_CONFIGS.items():
+            # Test connectivity to each model
+            try:
+                response = requests.get(f"{config['host']}/api/tags", timeout=5)
+                available = response.status_code == 200
+            except:
+                available = False
+                
+            models.append({
+                "key": model_key,
+                "name": config["name"],
+                "model": config["model"],
+                "host": config["host"],
+                "available": available
+            })
+        
+        # Format current config as an object matching the frontend expectations
+        current_llm_config = get_current_llm_config()
+        current_config = None
+        
+        # Find the current model configuration
+        for model_key, config in LLM_CONFIGS.items():
+            if config["host"] == current_llm_config["host"] and config["model"] == current_llm_config["model"]:
+                current_config = {
+                    "key": model_key,
+                    "name": config["name"],
+                    "model": config["model"],
+                    "host": config["host"]
+                }
+                break
+        
+        return {
+            "success": True,
+            "models": models,
+            "current": current_config
+        }
+    except Exception as e:
+        logging.error(f"Error getting available models: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get available models")
+
+@app.post("/api/llm/test")
+async def test_llm_connection(request: dict):
+    """Test connection to a specific LLM model"""
+    try:
+        model_name = request.get("model", "llama")
+        if model_name not in LLM_CONFIGS:
+            raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
+        
+        config = LLM_CONFIGS[model_name]
+        
+        # Test basic connectivity
+        response = requests.get(f"{config['host']}/api/tags", timeout=10)
+        if response.status_code != 200:
+            return {"success": False, "error": "Cannot connect to LLM service"}
+        
+        # Test model availability
+        tags_data = response.json()
+        available_models = [model["name"] for model in tags_data.get("models", [])]
+        
+        if config["model"] not in available_models:
+            return {
+                "success": False, 
+                "error": f"Model {config['model']} not found. Available models: {', '.join(available_models)}"
+            }
+        
+        # Test generation
+        test_response = requests.post(
+            f"{config['host']}/api/generate",
+            json={
+                "model": config["model"],
+                "prompt": "Test connection. Respond with 'OK'.",
+                "stream": False,
+                "options": {"temperature": 0.1}
+            },
+            timeout=15
+        )
+        
+        if test_response.status_code == 200:
+            result = test_response.json().get("response", "").strip()
+            return {
+                "success": True,
+                "message": f"Successfully connected to {config['name']}",
+                "response": result
+            }
+        else:
+            return {"success": False, "error": "Model failed to generate response"}
+            
+    except Exception as e:
+        logging.error(f"Error testing LLM connection: {e}")
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

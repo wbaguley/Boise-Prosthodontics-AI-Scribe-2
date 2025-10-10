@@ -383,14 +383,12 @@ const Dashboard = ({ onNavigate }) => {
     console.log('Template data JSON:', JSON.stringify(newTemplate, null, 2));
 
     try {
-      // Create the update payload - only include sections if they were modified
+      // Create the update payload with all fields
       const updatePayload = {
         name: newTemplate.name,
         description: newTemplate.description,
         ai_instructions: newTemplate.ai_instructions,
-        // Include sections and flag to update them
-        sections: newTemplate.sections,
-        update_sections: true  // For now, always update sections when updating template
+        sections: newTemplate.sections
       };
       
       const response = await fetch(`${API_URL}/api/templates/${editingTemplate.id}`, {
@@ -796,31 +794,52 @@ const Dashboard = ({ onNavigate }) => {
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Boise Prosthodontics AI Scribe</h1>
               <p className="text-sm text-gray-600 mt-1">Dashboard</p>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            {/* Mobile Layout - Centered buttons stacked vertically */}
+            <div className="flex flex-col sm:hidden gap-3 items-center justify-center px-6 mx-auto">
               <button
                 onClick={() => onNavigate && onNavigate('recording')}
-                className="w-full sm:w-auto px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 text-sm font-semibold"
+                className="w-full max-w-xs px-8 py-6 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center justify-center gap-3 text-xl font-bold shadow-lg transform hover:scale-105 transition-all duration-200"
               >
                 ▶️ Start New Session
               </button>
               <button
                 onClick={() => onNavigate && onNavigate('session-history')}
-                className="w-full sm:w-auto px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm font-semibold"
+                className="w-full max-w-xs px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm font-semibold"
               >
                 📋 View All Sessions
               </button>
-              <button
-                onClick={() => setShowAITraining(true)}
-                className="w-full sm:w-auto px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2 text-sm"
-              >
-                🤖 AI Training
-              </button>
+
               <button
                 onClick={() => setShowSettings(true)}
-                className="w-full sm:w-auto px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm"
+                className="w-full max-w-xs px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm"
               >
                 Settings
               </button>
+            </div>
+
+            {/* Desktop Layout - Start New Session in middle, other buttons to the right */}
+            <div className="hidden sm:flex items-center justify-center gap-4">
+              <button
+                onClick={() => onNavigate && onNavigate('recording')}
+                className="px-6 py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-3 text-lg font-bold shadow-lg transform hover:scale-105 transition-all duration-200"
+              >
+                ▶️ Start New Session
+              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => onNavigate && onNavigate('session-history')}
+                  className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm font-semibold"
+                >
+                  📋 View All Sessions
+                </button>
+
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm"
+                >
+                  Settings
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -952,7 +971,7 @@ const Dashboard = ({ onNavigate }) => {
             </div>
 
             <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
                 
                 {/* Providers & Voice Training */}
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
@@ -967,18 +986,7 @@ const Dashboard = ({ onNavigate }) => {
                   </div>
                 </div>
 
-                {/* SOAP Templates */}
-                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
-                     onClick={() => setShowTemplateSettings(true)}>
-                  <div className="text-center">
-                    <div className="text-4xl mb-4">📋</div>
-                    <h4 className="font-semibold text-lg text-gray-800">SOAP Templates</h4>
-                    <p className="text-sm text-gray-600 mt-2">Create and manage SOAP templates</p>
-                    <div className="mt-4 text-xs text-green-600">
-                      {templates.length} Template{templates.length !== 1 ? 's' : ''} Created
-                    </div>
-                  </div>
-                </div>
+
 
                 {/* System Configuration */}
                 <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
@@ -1002,6 +1010,38 @@ const Dashboard = ({ onNavigate }) => {
                     <p className="text-sm text-gray-600 mt-2">Add and manage users</p>
                     <div className="mt-4 text-xs text-orange-600">
                       {users.length} User{users.length !== 1 ? 's' : ''} Registered
+                    </div>
+                  </div>
+                </div>
+
+                {/* AI Training */}
+                <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
+                     onClick={() => {
+                       setShowSettings(false);
+                       setShowAITraining(true);
+                     }}>
+                  <div className="text-center">
+                    <div className="text-4xl mb-4">🤖</div>
+                    <h4 className="font-semibold text-lg text-gray-800">AI Training</h4>
+                    <p className="text-sm text-gray-600 mt-2">Train and interact with the AI model</p>
+                    <div className="mt-4 text-xs text-indigo-600">
+                      Chat Interface & Knowledge Base
+                    </div>
+                  </div>
+                </div>
+
+                {/* SOAP Templates */}
+                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
+                     onClick={() => {
+                       setShowSettings(false);
+                       setShowTemplateSettings(true);
+                     }}>
+                  <div className="text-center">
+                    <div className="text-4xl mb-4">📋</div>
+                    <h4 className="font-semibold text-lg text-gray-800">SOAP Templates</h4>
+                    <p className="text-sm text-gray-600 mt-2">Create and manage SOAP templates</p>
+                    <div className="mt-4 text-xs text-green-600">
+                      {templates.length} Template{templates.length !== 1 ? 's' : ''} Created
                     </div>
                   </div>
                 </div>
@@ -1357,7 +1397,6 @@ const Dashboard = ({ onNavigate }) => {
                 </button>
               </div>
 
-
             </div>
           </div>
         </div>
@@ -1427,11 +1466,11 @@ const Dashboard = ({ onNavigate }) => {
 
       {/* AI Training Modal */}
       {showAITraining && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-[95vw] max-h-[95vh] overflow-hidden">
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-6">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 lg:p-4">
+          <div className="bg-white rounded-lg w-full max-w-[98vw] lg:max-w-[95vw] max-h-[98vh] lg:max-h-[95vh] overflow-hidden">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-3 lg:p-6">
               <div className="flex justify-between items-center">
-                <h3 className="text-2xl font-semibold">AI Model Training</h3>
+                <h3 className="text-xl lg:text-2xl font-semibold">AI Model Training</h3>
                 <button
                   onClick={() => setShowAITraining(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
@@ -1441,22 +1480,23 @@ const Dashboard = ({ onNavigate }) => {
               </div>
             </div>
 
-            <div className="flex h-[80vh]">
+            {/* Mobile/Desktop Layout Toggle */}
+            <div className="flex flex-col lg:flex-row h-[85vh] lg:h-[80vh]">
               {/* Left Panel - Chat Interface */}
-              <div className="flex-1 flex flex-col border-r">
-                <div className="p-4 bg-gray-50 border-b">
+              <div className="flex-1 flex flex-col lg:border-r h-1/2 lg:h-full">
+                <div className="p-3 lg:p-4 bg-gray-50 border-b">
                   <h4 className="font-semibold">Chat with AI Model</h4>
                   <p className="text-sm text-gray-600">Train and interact with the AI to improve its responses</p>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div className="flex-1 overflow-y-auto p-3 lg:p-4 space-y-4">
                   <div className="bg-blue-50 rounded-lg p-3">
                     <div className="font-medium text-sm text-blue-800">AI Model</div>
                     <div className="mt-1">Hello! I'm ready to learn. You can ask me questions about prosthodontics or provide training examples.</div>
                   </div>
                 </div>
                 
-                <div className="p-4 border-t">
+                <div className="p-3 lg:p-4 border-t">
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -1471,13 +1511,13 @@ const Dashboard = ({ onNavigate }) => {
               </div>
 
               {/* Right Panel - Knowledge Management */}
-              <div className="w-80 flex flex-col">
-                <div className="p-4 bg-gray-50 border-b">
+              <div className="w-full lg:w-80 flex flex-col border-t lg:border-t-0 h-1/2 lg:h-full">
+                <div className="p-3 lg:p-4 bg-gray-50 border-b">
                   <h4 className="font-semibold">Knowledge Base</h4>
                   <p className="text-sm text-gray-600">Upload documents and manage AI memory</p>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-4">
+                <div className="flex-1 overflow-y-auto p-3 lg:p-4">
                   {/* Upload Section */}
                   <div className="mb-6">
                     <h5 className="font-medium mb-2">Upload Documents</h5>

@@ -46,7 +46,6 @@ const SimpleTemplateEditor = ({ templateId, onClose }) => {
         description: template.description,
         ai_instructions: template.ai_instructions,
         sections: template.sections,
-        update_sections: true,
         [field]: value
       };
 

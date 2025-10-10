@@ -47,6 +47,13 @@ const RecordingScreen = ({ onNavigate }) => {
   const [selectedTemplate, setSelectedTemplate] = useState('work_up');
   const [availableTemplates, setAvailableTemplates] = useState([]);
   
+  // Post-Visit Email functionality
+  const [postVisitEmail, setPostVisitEmail] = useState('');
+  const [isGeneratingEmail, setIsGeneratingEmail] = useState(false);
+  const [showEmailEditor, setShowEmailEditor] = useState(false);
+  const [emailEditText, setEmailEditText] = useState('');
+  const [savedEmails, setSavedEmails] = useState([]);
+  
   const websocketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -514,6 +521,72 @@ What would you like to change about the SOAP note?`,
     ).join(' ');
   };
 
+  // Post-Visit Email Functions
+  const generatePostVisitEmail = async () => {
+    if (!soapNote || !selectedProvider) {
+      alert('Please complete the session and select a provider first');
+      return;
+    }
+
+    setIsGeneratingEmail(true);
+    try {
+      const response = await fetch(`${API_URL}/api/generate-post-visit-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          soap_note: soapNote,
+          patient_name: 'Patient', // Could be enhanced to get actual patient name
+          provider_name: selectedProvider?.name || 'Dr. Provider',
+          appointment_date: sessionDate,
+          transcript: transcript
+        })
+      });
+
+      const result = await response.json();
+      if (result.status === 'success') {
+        setPostVisitEmail(result.email_content);
+        setEmailEditText(result.email_content);
+      } else {
+        console.error('Failed to generate email:', result.message);
+        alert('Failed to generate post-visit email');
+      }
+    } catch (error) {
+      console.error('Error generating post-visit email:', error);
+      alert('Error generating post-visit email');
+    } finally {
+      setIsGeneratingEmail(false);
+    }
+  };
+
+  const savePostVisitEmail = () => {
+    if (!emailEditText.trim()) return;
+    
+    const newEmail = {
+      id: Date.now(),
+      content: emailEditText,
+      createdAt: new Date().toLocaleString(),
+      sessionId: sessionId
+    };
+    
+    setSavedEmails(prev => [newEmail, ...prev]);
+    setPostVisitEmail(emailEditText);
+    setShowEmailEditor(false);
+  };
+
+  const deleteEmail = (emailId) => {
+    setSavedEmails(prev => prev.filter(email => email.id !== emailId));
+  };
+
+  const loadEmail = (email) => {
+    setPostVisitEmail(email.content);
+    setEmailEditText(email.content);
+  };
+
+  const copyEmailToClipboard = (content) => {
+    navigator.clipboard.writeText(content);
+    alert('Email copied to clipboard!');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
@@ -622,8 +695,8 @@ What would you like to change about the SOAP note?`,
                 disabled={connectionStatus !== 'connected' || !selectedProvider}
                 className={`w-full py-4 px-6 rounded-lg font-semibold text-white transition-all ${
                   isRecording 
-                    ? 'bg-red-500 hover:bg-red-600' 
-                    : 'bg-blue-500 hover:bg-blue-600'
+                    ? 'bg-gray-500 hover:bg-gray-600' 
+                    : 'bg-red-500 hover:bg-red-600'
                 } ${connectionStatus !== 'connected' || !selectedProvider ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {isRecording ? 'Stop Recording' : 'Start Recording'}
@@ -875,6 +948,138 @@ What would you like to change about the SOAP note?`,
             )}
           </div>
         </div>
+
+        {/* Post-Visit Email Section */}
+        {soapNote && (
+          <div className="mt-6 bg-white rounded-xl shadow-lg p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Post-Visit Summary Email</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={generatePostVisitEmail}
+                  disabled={isGeneratingEmail || !soapNote}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                >
+                  {isGeneratingEmail ? 'Generating...' : '✉️ Generate Email'}
+                </button>
+                {postVisitEmail && (
+                  <button
+                    onClick={() => setShowEmailEditor(!showEmailEditor)}
+                    className={`px-4 py-2 rounded-lg font-medium ${
+                      showEmailEditor 
+                        ? 'bg-orange-500 text-white hover:bg-orange-600' 
+                        : 'bg-green-500 text-white hover:bg-green-600'
+                    }`}
+                  >
+                    {showEmailEditor ? '✕ Close Editor' : '✏️ Edit Email'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Email Content and Editor */}
+            <div className={`grid gap-4 ${showEmailEditor ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
+              {/* Email Display */}
+              <div className="bg-gray-50 rounded-lg p-4 min-h-64">
+                {isGeneratingEmail ? (
+                  <div className="flex flex-col items-center justify-center h-64">
+                    <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mb-4"></div>
+                    <p className="text-gray-600 font-medium">Generating patient-friendly email...</p>
+                  </div>
+                ) : postVisitEmail ? (
+                  <div>
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="font-medium text-gray-700">Email Preview</h3>
+                      <button
+                        onClick={() => copyEmailToClipboard(postVisitEmail)}
+                        className="text-sm px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                      >
+                        📋 Copy
+                      </button>
+                    </div>
+                    <pre className="whitespace-pre-wrap text-sm text-gray-800">
+                      {postVisitEmail}
+                    </pre>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-64 text-gray-400">
+                    Click "Generate Email" to create a patient-friendly summary...
+                  </div>
+                )}
+              </div>
+
+              {/* Email Editor */}
+              {showEmailEditor && (
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-medium text-gray-700 mb-3">Email Editor</h3>
+                  <textarea
+                    value={emailEditText}
+                    onChange={(e) => setEmailEditText(e.target.value)}
+                    placeholder="Edit the email content here..."
+                    className="w-full h-48 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                  />
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={savePostVisitEmail}
+                      disabled={!emailEditText.trim()}
+                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm"
+                    >
+                      💾 Save Email
+                    </button>
+                    <button
+                      onClick={generatePostVisitEmail}
+                      disabled={isGeneratingEmail}
+                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm"
+                    >
+                      🔄 Regenerate
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Saved Emails List */}
+            {savedEmails.length > 0 && (
+              <div className="mt-6 border-t pt-4">
+                <h3 className="font-medium text-gray-700 mb-3">Saved Emails ({savedEmails.length})</h3>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {savedEmails.map((email) => (
+                    <div key={email.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">
+                          Email saved on {email.createdAt}
+                        </p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {email.content.substring(0, 100)}...
+                        </p>
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        <button
+                          onClick={() => loadEmail(email)}
+                          className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                        >
+                          Load
+                        </button>
+                        <button
+                          onClick={() => copyEmailToClipboard(email.content)}
+                          className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
+                        >
+                          Copy
+                        </button>
+                        <button
+                          onClick={() => deleteEmail(email.id)}
+                          className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -100,6 +100,10 @@ const Dashboard = ({ onNavigate }) => {
   const [editingMemory, setEditingMemory] = useState(null);
   const [uploadedFiles, setUploadedFiles] = useState([]);
 
+  // LLM state management
+  const [currentLLM, setCurrentLLM] = useState('llama');
+  const [llmStatus, setLlmStatus] = useState({ llama: false, mistral: false });
+
   // File upload reference
   const fileInputRef = useRef(null);
 
@@ -171,6 +175,50 @@ const Dashboard = ({ onNavigate }) => {
     setUploadedFiles(prev => prev.filter(file => file.id !== fileId));
   };
 
+  // LLM Configuration Functions
+  const fetchLLMConfig = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/llm/config`);
+      const data = await response.json();
+      if (data.success && data.config) {
+        setCurrentLLM(data.config.key);
+      }
+    } catch (error) {
+      console.error('Error fetching LLM config:', error);
+    }
+  };
+
+  const fetchLLMStatus = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/llm/status`);
+      const status = await response.json();
+      setLlmStatus(status);
+    } catch (error) {
+      console.error('Error fetching LLM status:', error);
+    }
+  };
+
+  const switchLLM = async (llmType) => {
+    try {
+      const response = await fetch(`${API_URL}/api/llm/switch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ llm_type: llmType })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        setCurrentLLM(llmType);
+        alert(`Switched to ${llmType} successfully`);
+      } else {
+        alert(`Failed to switch to ${llmType}`);
+      }
+    } catch (error) {
+      console.error('Error switching LLM:', error);
+      alert('Error switching LLM');
+    }
+  };
+
   const deleteMemory = async (memoryId) => {
     if (!window.confirm('Are you sure you want to delete this memory? This action cannot be undone.')) {
       return;
@@ -226,8 +274,13 @@ const Dashboard = ({ onNavigate }) => {
     fetchTemplates();
     fetchConfiguration();
     fetchKnowledgeArticles();
+    fetchLLMConfig();
+    fetchLLMStatus();
     
-    const interval = setInterval(fetchSystemStatus, 30000);
+    const interval = setInterval(() => {
+      fetchSystemStatus();
+      fetchLLMStatus();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -874,10 +927,10 @@ const Dashboard = ({ onNavigate }) => {
 
           <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-600">Total Sessions</h3>
-              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+              <h3 className="text-xs sm:text-sm font-medium text-gray-600">Current LLM</h3>
+              <div className={`w-3 h-3 rounded-full ${currentLLM === 'llama' ? (llmStatus.llama ? 'bg-green-500' : 'bg-red-500') : (llmStatus.mistral ? 'bg-green-500' : 'bg-red-500')}`}></div>
             </div>
-            <p className="text-lg sm:text-2xl font-bold text-gray-800">{sessions.length}</p>
+            <p className="text-lg sm:text-2xl font-bold text-gray-800 capitalize">{currentLLM}</p>
           </div>
         </div>
 
@@ -1042,6 +1095,49 @@ const Dashboard = ({ onNavigate }) => {
                     <p className="text-sm text-gray-600 mt-2">Create and manage SOAP templates</p>
                     <div className="mt-4 text-xs text-green-600">
                       {templates.length} Template{templates.length !== 1 ? 's' : ''} Created
+                    </div>
+                  </div>
+                </div>
+
+                {/* LLM Configuration */}
+                <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6">
+                  <div className="text-center">
+                    <div className="text-4xl mb-4">🧠</div>
+                    <h4 className="font-semibold text-lg text-gray-800">LLM Configuration</h4>
+                    <p className="text-sm text-gray-600 mt-2">Select AI Model</p>
+                    
+                    {/* Current Model Display */}
+                    <div className="mt-3 mb-4">
+                      <div className="text-xs text-gray-500 mb-1">Current Model:</div>
+                      <div className="font-medium text-sm capitalize bg-white px-2 py-1 rounded-md border">
+                        {currentLLM}
+                      </div>
+                    </div>
+
+                    {/* Model Toggle */}
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => switchLLM('llama')}
+                        className={`w-full px-3 py-2 text-xs rounded-md border transition-all ${
+                          currentLLM === 'llama' 
+                            ? 'bg-blue-500 text-white border-blue-500' 
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                        }`}
+                        disabled={!llmStatus.llama}
+                      >
+                        Llama {llmStatus.llama ? '🟢' : '🔴'}
+                      </button>
+                      <button
+                        onClick={() => switchLLM('mistral')}
+                        className={`w-full px-3 py-2 text-xs rounded-md border transition-all ${
+                          currentLLM === 'mistral' 
+                            ? 'bg-blue-500 text-white border-blue-500' 
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                        }`}
+                        disabled={!llmStatus.mistral}
+                      >
+                        Mistral {llmStatus.mistral ? '🟢' : '🔴'}
+                      </button>
                     </div>
                   </div>
                 </div>

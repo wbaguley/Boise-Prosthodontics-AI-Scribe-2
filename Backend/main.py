@@ -506,7 +506,7 @@ Patient: Is it serious?
 Doctor: The crown appears to be failing. We'll need to replace it."""
 
 def generate_soap_note(transcript, template_name="default", doctor_name=""):
-    """Generate SOAP note using Ollama with template"""
+    """Generate SOAP note using Ollama with template and AI memory knowledge"""
     
     template = template_manager.get_template(template_name)
     ai_instructions = ""
@@ -517,10 +517,27 @@ def generate_soap_note(transcript, template_name="default", doctor_name=""):
         ai_instructions = template.get("ai_instructions", "")
         template_sections = template.get("sections", {})
     
-    # Build the prompt with maximum emphasis on template compliance
-    prompt = f"""SYSTEM: You are an AI assistant that MUST follow instructions EXACTLY. Any deviation will result in failure.
+    # Get relevant knowledge from AI memory
+    knowledge_base = ""
+    try:
+        from database import get_all_knowledge_articles
+        articles = get_all_knowledge_articles()
+        if articles:
+            knowledge_base = "\n🧠 AI MEMORY KNOWLEDGE BASE - APPLY THIS KNOWLEDGE:\n"
+            for article in articles:
+                knowledge_base += f"\n📚 {article.get('title', 'Knowledge Item')} ({article.get('category', 'General')}):\n"
+                knowledge_base += f"{article.get('content', '')}\n"
+            knowledge_base += "\n🚨 CRITICAL: You MUST apply this knowledge when writing the SOAP note! 🚨\n"
+    except Exception as e:
+        logging.error(f"Error retrieving knowledge base: {e}")
+        knowledge_base = ""
+    
+    # Build the enhanced prompt with knowledge base integration
+    prompt = f"""SYSTEM: You are an AI assistant that MUST follow instructions EXACTLY and apply stored knowledge. Any deviation will result in failure.
 
 IDENTITY: You are Dr. {doctor_name}, a prosthodontist writing a clinical note.
+
+{knowledge_base}
 
 MANDATORY TEMPLATE STRUCTURE - FOLLOW EXACTLY:
 {json.dumps(template_sections, indent=2) if template_sections else "Standard SOAP format"}
@@ -534,16 +551,18 @@ TRANSCRIPT TO ANALYZE:
 🔒 ABSOLUTE REQUIREMENTS:
 1. ✅ MUST follow the EXACT template structure shown above
 2. ✅ MUST follow EVERY SINGLE AI instruction word-for-word
-3. ❌ NEVER write "See transcript", "As discussed", or "Based on consultation"
-4. ✅ MUST extract ALL specific details from transcript
-5. ✅ MUST write in the EXACT style specified in AI instructions
-6. ✅ MUST use actual patient words and conversation details
-7. ✅ MUST write as if YOU personally conducted the visit
-8. ✅ MUST include ALL relevant clinical details mentioned
+3. ✅ MUST apply ALL relevant knowledge from AI Memory Knowledge Base
+4. ❌ NEVER write "See transcript", "As discussed", or "Based on consultation"
+5. ✅ MUST extract ALL specific details from transcript
+6. ✅ MUST write in the EXACT style specified in AI instructions
+7. ✅ MUST use actual patient words and conversation details
+8. ✅ MUST write as if YOU personally conducted the visit
+9. ✅ MUST include ALL relevant clinical details mentioned
+10. ✅ MUST incorporate relevant protocols, procedures, and knowledge from the AI Memory
 
-WARNING: Any generic phrases or failure to follow AI instructions will be rejected.
+WARNING: Any generic phrases or failure to follow AI instructions OR knowledge base will be rejected.
 
-BEGIN SOAP NOTE GENERATION - FOLLOW ALL INSTRUCTIONS ABOVE:"""
+BEGIN SOAP NOTE GENERATION - FOLLOW ALL INSTRUCTIONS AND APPLY KNOWLEDGE ABOVE:"""
 
     try:
         llm_config = get_current_llm_config()
@@ -591,12 +610,29 @@ Full Transcript:
 {transcript}"""
 
 def generate_post_visit_email(soap_note: str, patient_name: str, provider_name: str, appointment_date: str = None, transcript: str = None):
-    """Generate a patient-friendly post-visit summary email using AI"""
+    """Generate a patient-friendly post-visit summary email using AI with knowledge base integration"""
     try:
-        # Create prompt for email generation
+        # Get relevant knowledge from AI memory for patient education
+        knowledge_base = ""
+        try:
+            from database import get_all_knowledge_articles
+            articles = get_all_knowledge_articles()
+            if articles:
+                knowledge_base = "\n🧠 AI MEMORY KNOWLEDGE BASE - USE FOR ACCURATE PATIENT EDUCATION:\n"
+                for article in articles:
+                    knowledge_base += f"\n📚 {article.get('title', 'Knowledge Item')} ({article.get('category', 'General')}):\n"
+                    knowledge_base += f"{article.get('content', '')}\n"
+                knowledge_base += "\n🚨 CRITICAL: Apply this knowledge for accurate patient information! 🚨\n"
+        except Exception as e:
+            logging.error(f"Error retrieving knowledge base for email: {e}")
+            knowledge_base = ""
+        
+        # Create enhanced prompt for email generation
         current_date = datetime.now().strftime("%B %d, %Y") if not appointment_date else appointment_date
         
         prompt = f"""Create a professional, warm, and patient-friendly post-visit summary email based on the following information from a dental appointment.
+
+{knowledge_base}
 
 SOAP NOTE:
 {soap_note}
@@ -620,12 +656,15 @@ EMAIL REQUIREMENTS:
 8. Add contact information for questions
 9. Close professionally with the doctor's name
 10. Keep medical terminology simple and explain complex terms
+11. ✅ MUST use AI Memory knowledge to provide accurate information about procedures, treatments, and care instructions
 
-IMPORTANT: 
+CRITICAL REQUIREMENTS: 
 - Use actual details from the SOAP note and transcript provided
-- Convert medical terms to patient-friendly language
-- Be specific about findings and recommendations
+- Convert medical terms to patient-friendly language using knowledge base
+- Be specific about findings and recommendations based on stored protocols
 - Make it personal and caring, not generic
+- Apply ALL relevant knowledge from AI Memory for accurate patient education
+- Follow established protocols and procedures from the knowledge base
 
 Generate the email with Subject: and Body: clearly marked:"""
 
@@ -1975,23 +2014,38 @@ async def ai_training_chat(request: TrainingChatRequest):
             for article in knowledge_articles[:5]:  # Limit to 5 most relevant
                 knowledge_context += f"- {article['title']} ({article['category']}): {article['content'][:200]}...\n"
         
-        # Enhanced training prompt
-        training_prompt = f"""You are an AI assistant for a dental prosthodontics practice. The user is training you to be a better dental scribe and assistant.
+        # Enhanced training prompt with comprehensive knowledge integration
+        training_prompt = f"""You are an AI assistant for a dental prosthodontics practice. You MUST follow stored knowledge and previous training exactly.
 
-User message: {request.message}
-
+🧠 AI MEMORY KNOWLEDGE BASE - APPLY THIS KNOWLEDGE ALWAYS:
 {knowledge_context}
 
-Please respond as a helpful, knowledgeable dental assistant. If the user is providing feedback or training, acknowledge it and explain how you'll incorporate their guidance. If they're asking a question, provide accurate dental information based on your knowledge and the context provided.
+🚨 CRITICAL INSTRUCTIONS:
+- You MUST apply all knowledge from the AI Memory when responding
+- When writing SOAP notes, you MUST follow template instructions precisely
+- When creating emails, you MUST use stored protocols and procedures
+- You MUST incorporate practice-specific knowledge and preferences
+- Never give generic responses - always use the stored knowledge base
 
-Focus on:
-1. Dental prosthodontics knowledge
-2. SOAP note documentation
-3. Patient care best practices
-4. Treatment planning
-5. Post-operative instructions
+User Training Message: {request.message}
 
-Respond in a professional, helpful manner:"""
+📋 RESPONSE REQUIREMENTS:
+1. ✅ Apply relevant knowledge from AI Memory above
+2. ✅ If this is feedback/training: Acknowledge and explain how you'll follow it
+3. ✅ If this is a question: Answer using stored knowledge base
+4. ✅ Focus on dental prosthodontics knowledge and SOAP documentation
+5. ✅ Incorporate patient care protocols from memory
+6. ✅ Reference treatment planning procedures from knowledge base
+7. ✅ Use post-operative instructions from stored protocols
+
+🎯 Key Focus Areas (use knowledge base for all):
+- Dental prosthodontics procedures and protocols
+- SOAP note documentation standards and templates
+- Patient care best practices and communication
+- Treatment planning workflows and decision trees
+- Post-operative care instructions and follow-up protocols
+
+Respond professionally while strictly following stored knowledge and training:"""
 
         # Send to LLM
         try:
@@ -2028,6 +2082,74 @@ Respond in a professional, helpful manner:"""
     except Exception as e:
         logging.error(f"AI training chat error: {e}")
         raise HTTPException(status_code=500, detail="Failed to process training chat")
+
+@app.post("/api/knowledge/auto-learn")
+async def auto_learn_from_interaction(data: dict):
+    """Automatically learn and store knowledge from successful interactions"""
+    try:
+        interaction_type = data.get("type")  # "soap_generation", "email_generation", "training_feedback"
+        content = data.get("content", "")
+        feedback = data.get("feedback", "")
+        success_rating = data.get("rating", 0)
+        
+        # Only store knowledge from highly rated interactions
+        if success_rating >= 4:  # 4 or 5 star rating
+            from database import create_knowledge_article
+            
+            # Generate knowledge article based on interaction type
+            if interaction_type == "soap_generation":
+                title = f"SOAP Note Best Practice - {datetime.now().strftime('%Y-%m-%d')}"
+                category = "SOAP Documentation"
+                knowledge_content = f"""Successful SOAP Note Pattern:
+
+User Feedback: {feedback}
+Rating: {success_rating}/5
+
+Best Practice Learned:
+{content}
+
+This pattern should be followed for future SOAP note generation to maintain quality and consistency."""
+                
+            elif interaction_type == "email_generation":
+                title = f"Post-Visit Email Best Practice - {datetime.now().strftime('%Y-%m-%d')}"
+                category = "Patient Communication"
+                knowledge_content = f"""Successful Email Pattern:
+
+User Feedback: {feedback}
+Rating: {success_rating}/5
+
+Communication Best Practice:
+{content}
+
+This communication style should be used for future patient emails to maintain professionalism and clarity."""
+                
+            elif interaction_type == "training_feedback":
+                title = f"Training Insight - {datetime.now().strftime('%Y-%m-%d')}"
+                category = "AI Training"
+                knowledge_content = f"""Important Training Feedback:
+
+User Guidance: {content}
+Feedback: {feedback}
+Importance: {success_rating}/5
+
+Key Learning:
+The AI should incorporate this guidance in all future responses to maintain consistency with practice preferences."""
+                
+            else:
+                return {"status": "Unknown interaction type"}
+            
+            # Store the knowledge
+            result = create_knowledge_article(title, knowledge_content, category)
+            if result:
+                return {"status": "Knowledge learned and stored successfully", "article_id": result.get("id")}
+            else:
+                return {"status": "Failed to store knowledge"}
+        else:
+            return {"status": "Rating too low for knowledge storage"}
+            
+    except Exception as e:
+        logging.error(f"Auto-learning error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process auto-learning")
 
 # ====== LLM MODEL MANAGEMENT ENDPOINTS ======
 
@@ -2181,6 +2303,47 @@ async def test_llm_connection(request: dict):
     except Exception as e:
         logging.error(f"Error testing LLM connection: {e}")
         return {"success": False, "error": str(e)}
+
+@app.get("/api/llm/status")
+async def get_llm_status():
+    """Get status of all available LLM models"""
+    try:
+        status = {}
+        for model_key, config in LLM_CONFIGS.items():
+            try:
+                response = requests.get(f"{config['host']}/api/tags", timeout=5)
+                status[model_key] = response.status_code == 200
+            except:
+                status[model_key] = False
+        
+        return status
+    except Exception as e:
+        logging.error(f"Error getting LLM status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get LLM status")
+
+@app.post("/api/llm/switch")
+async def switch_llm_model(request: dict):
+    """Switch to a different LLM model"""
+    try:
+        llm_type = request.get("llm_type")
+        if not llm_type:
+            raise HTTPException(status_code=400, detail="llm_type is required")
+        
+        if llm_type not in LLM_CONFIGS:
+            raise HTTPException(status_code=400, detail=f"Unknown LLM type: {llm_type}")
+        
+        # Save the configuration choice to a file
+        config_path = os.path.join(os.path.dirname(__file__), "llm_config.json")
+        with open(config_path, "w") as f:
+            json.dump({"current_model": llm_type}, f)
+        
+        # Update global variables
+        set_llm_model(llm_type)
+        
+        return {"success": True, "message": f"Switched to {LLM_CONFIGS[llm_type]['name']}"}
+    except Exception as e:
+        logging.error(f"Error switching LLM: {e}")
+        raise HTTPException(status_code=500, detail="Failed to switch LLM model")
 
 if __name__ == "__main__":
     import uvicorn

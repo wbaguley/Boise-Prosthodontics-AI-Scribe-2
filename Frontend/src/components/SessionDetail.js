@@ -9,6 +9,17 @@ const SessionDetail = ({ sessionId, onNavigate, onClose }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedSOAP, setEditedSOAP] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Helper function to map old template names to new ones
+  const mapOldTemplateNames = (templateName) => {
+    const templateMapping = {
+      'work_up': 'new_patient_consultation',
+      'Work Up': 'new_patient_consultation',
+      'default': 'new_patient_consultation'
+    };
+    
+    return templateMapping[templateName] || templateName;
+  };
   
   // Chat functionality
   const [showEditChat, setShowEditChat] = useState(false);
@@ -141,9 +152,13 @@ const SessionDetail = ({ sessionId, onNavigate, onClose }) => {
       const response = await fetch(`${API_URL}/api/sessions/${sessionId}`);
       if (response.ok) {
         const data = await response.json();
+        // Map old template names to new ones
+        const mappedTemplate = mapOldTemplateNames(data.template_used || 'new_patient_consultation');
+        data.template_used = mappedTemplate; // Update the session data
+        
         setSession(data);
         setEditedSOAP(data.soap_note || '');
-        setSelectedTemplate(data.template_used || 'new_patient_consultation');
+        setSelectedTemplate(mappedTemplate);
       } else {
         setError('Session not found');
       }
@@ -563,7 +578,11 @@ What would you like to change?`,
 
   const formatTemplateName = (template) => {
     if (!template) return 'Default';
-    return template.split('_').map(word => 
+    
+    // Map old template names first
+    const mappedTemplate = mapOldTemplateNames(template);
+    
+    return mappedTemplate.split('_').map(word => 
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
   };

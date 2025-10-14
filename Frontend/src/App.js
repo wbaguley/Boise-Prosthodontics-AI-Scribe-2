@@ -3,6 +3,7 @@ import Dashboard from './components/Dashboard';
 import RecordingScreen from './components/RecordingScreen';
 import SessionDetail from './components/SessionDetail';
 import SessionHistory from './components/SessionHistory';
+import SystemConfig from './components/SystemConfig';
 
 const App = () => {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -19,6 +20,7 @@ const App = () => {
       {currentView === 'recording' && <RecordingScreen onNavigate={navigate} />}
       {currentView === 'session-detail' && <SessionDetail sessionId={selectedSessionId} onNavigate={navigate} />}
       {currentView === 'session-history' && <SessionHistory onNavigate={navigate} />}
+      {currentView === 'system-config' && <SystemConfig onNavigate={navigate} />}
     </div>
   );
 };

@@ -44,7 +44,7 @@ const RecordingScreen = ({ onNavigate }) => {
   
   const [providers, setProviders] = useState([]);
   const [selectedProvider, setSelectedProvider] = useState(null);
-  const [selectedTemplate, setSelectedTemplate] = useState('work_up');
+  const [selectedTemplate, setSelectedTemplate] = useState('new_patient_consultation');
   const [availableTemplates, setAvailableTemplates] = useState([]);
   
   // Post-Visit Email functionality
@@ -97,7 +97,7 @@ const RecordingScreen = ({ onNavigate }) => {
       setAvailableTemplates(Object.keys(templates));
     } catch (error) {
       console.error('Error fetching templates:', error);
-      setAvailableTemplates(['work_up']);
+      setAvailableTemplates(['new_patient_consultation', 'treatment_consultation']);
     }
   };
 

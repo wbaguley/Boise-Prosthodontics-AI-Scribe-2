@@ -44,6 +44,17 @@ class Session(Base):
     template_used = Column(String, nullable=True)
     session_metadata = Column(Text, nullable=True)
 
+class SystemConfig(Base):
+    """System configuration settings"""
+    __tablename__ = 'system_config'
+    
+    id = Column(Integer, primary_key=True)
+    key = Column(String, unique=True, nullable=False)
+    value = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # Create database in persistent data directory
 data_dir = Path("/app/data")
 data_dir.mkdir(exist_ok=True)
@@ -570,3 +581,88 @@ def delete_session_by_id(session_id: str):
         return False
     finally:
         db.close()
+
+# ============================================
+# System Configuration CRUD Operations
+# ============================================
+
+def get_system_config(key, default_value=None):
+    """Get a system configuration value by key"""
+    db = SessionLocal()
+    try:
+        config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        if config:
+            return config.value
+        return default_value
+    except Exception as e:
+        print(f"Error getting system config {key}: {e}")
+        return default_value
+    finally:
+        db.close()
+
+def set_system_config(key, value, description=None):
+    """Set a system configuration value"""
+    db = SessionLocal()
+    try:
+        config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        
+        if config:
+            config.value = str(value)
+            if description:
+                config.description = description
+            config.updated_at = datetime.utcnow()
+        else:
+            config = SystemConfig(
+                key=key,
+                value=str(value),
+                description=description
+            )
+            db.add(config)
+        
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Error setting system config {key}: {e}")
+        db.rollback()
+        return False
+    finally:
+        db.close()
+
+def get_all_system_configs():
+    """Get all system configuration settings"""
+    db = SessionLocal()
+    try:
+        configs = db.query(SystemConfig).order_by(SystemConfig.key).all()
+        return [
+            {
+                'key': c.key,
+                'value': c.value,
+                'description': c.description,
+                'created_at': c.created_at,
+                'updated_at': c.updated_at
+            }
+            for c in configs
+        ]
+    except Exception as e:
+        print(f"Error getting all system configs: {e}")
+        return []
+    finally:
+        db.close()
+
+def initialize_default_configs():
+    """Initialize default system configuration values"""
+    defaults = [
+        ('timezone', 'America/Denver', 'System timezone for datetime display and operations'),
+        ('date_format', '%Y-%m-%d', 'Default date format for display'),
+        ('time_format', '%H:%M:%S', 'Default time format for display'),
+        ('datetime_format', '%Y-%m-%d %H:%M:%S', 'Default datetime format for display'),
+        ('clinic_name', 'Boise Prosthodontics', 'Clinic name for documentation'),
+        ('default_provider', 'Dr. Provider', 'Default provider name when none specified')
+    ]
+    
+    for key, value, description in defaults:
+        existing = get_system_config(key)
+        if existing is None:
+            set_system_config(key, value, description)
+    
+    print("Default system configurations initialized")

@@ -868,6 +868,12 @@ const Dashboard = ({ onNavigate }) => {
               >
                 Settings
               </button>
+              <button
+                onClick={() => onNavigate && onNavigate('system-config')}
+                className="w-full max-w-xs px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center justify-center gap-2 text-sm"
+              >
+                🕒 Timezone & System
+              </button>
             </div>
 
             {/* Desktop Layout - Start New Session in middle, other buttons to the right */}
@@ -884,6 +890,13 @@ const Dashboard = ({ onNavigate }) => {
                   className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm font-semibold"
                 >
                   📋 View All Sessions
+                </button>
+
+                <button
+                  onClick={() => onNavigate && onNavigate('system-config')}
+                  className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center justify-center gap-2 text-sm"
+                >
+                  🕒 System Config
                 </button>
 
                 <button

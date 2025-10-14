@@ -143,7 +143,7 @@ const SessionDetail = ({ sessionId, onNavigate, onClose }) => {
         const data = await response.json();
         setSession(data);
         setEditedSOAP(data.soap_note || '');
-        setSelectedTemplate(data.template_used || 'work_up');
+        setSelectedTemplate(data.template_used || 'new_patient_consultation');
       } else {
         setError('Session not found');
       }

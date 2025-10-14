@@ -47,7 +47,7 @@ const Scribe = () => {
   const [showProviderModal, setShowProviderModal] = useState(false);
   const [showVoiceProfile, setShowVoiceProfile] = useState(false);
   
-  const [selectedTemplate, setSelectedTemplate] = useState('work_up');
+  const [selectedTemplate, setSelectedTemplate] = useState('new_patient_consultation');
   const [availableTemplates, setAvailableTemplates] = useState([]);
   
   const websocketRef = useRef(null);

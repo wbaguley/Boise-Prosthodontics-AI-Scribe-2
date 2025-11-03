@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Save, DollarSign, Zap, Cloud, Server, Trash2 } from 'lucide-react';
 
-const Settings = () => {
+const Settings = ({ onSave }) => {
   const [currentProvider, setCurrentProvider] = useState('ollama');
   const [openaiApiKey, setOpenaiApiKey] = useState('');
   const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini');
@@ -72,12 +72,16 @@ const Settings = () => {
       
       if (data.success) {
         setMessage('Settings saved successfully! The system will use the new configuration immediately.');
-        setTimeout(() => setMessage(''), 5000);
         
         // Mark API key as saved if we're using OpenAI
         if (currentProvider === 'openai') {
           setApiKeySaved(true);
           setOpenaiApiKey(''); // Clear from display for security
+        }
+        
+        // Notify parent component (Dashboard) to refresh
+        if (onSave) {
+          setTimeout(() => onSave(), 1000); // Close modal after 1 second
         }
       } else {
         setError(data.detail || 'Failed to save settings');

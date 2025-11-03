@@ -187,8 +187,15 @@ const Dashboard = ({ onNavigate }) => {
     try {
       const response = await fetch(`${API_URL}/api/llm/config`);
       const data = await response.json();
-      if (data.success && data.config) {
-        setCurrentLLM(data.config.key);
+      if (data.success) {
+        // Backend returns llm_provider (ollama/openai) and model
+        if (data.llm_provider === 'openai') {
+          setCurrentLLM(`OpenAI (${data.model})`);
+        } else {
+          // For Ollama, extract short name from model (e.g., "llama3.1:8b" -> "llama3.1")
+          const modelName = data.model ? data.model.split(':')[0] : 'llama3.1';
+          setCurrentLLM(modelName);
+        }
       }
     } catch (error) {
       console.error('Error fetching LLM config:', error);
@@ -948,9 +955,9 @@ const Dashboard = ({ onNavigate }) => {
           <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs sm:text-sm font-medium text-gray-600">Current LLM</h3>
-              <div className={`w-3 h-3 rounded-full ${llmStatus[currentLLM] ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <div className={`w-3 h-3 rounded-full ${currentLLM.startsWith('OpenAI') || llmStatus[currentLLM] ? 'bg-green-500' : 'bg-red-500'}`}></div>
             </div>
-            <p className="text-lg sm:text-2xl font-bold text-gray-800 capitalize">
+            <p className="text-lg sm:text-2xl font-bold text-gray-800">
               {currentLLM === 'llama3.1' ? 'Llama 3.1 8B' : 
                currentLLM === 'codellama' ? 'Code Llama 13B' : 
                currentLLM === 'mixtral' ? 'Mixtral 8x7B' : 
@@ -1133,65 +1140,20 @@ const Dashboard = ({ onNavigate }) => {
                   <div className="text-center">
                     <div className="text-4xl mb-4">🧠</div>
                     <h4 className="font-semibold text-lg text-gray-800">LLM Configuration</h4>
-                    <p className="text-sm text-gray-600 mt-2">Select AI Model</p>
+                    <p className="text-sm text-gray-600 mt-2">Configure AI Provider & Model</p>
                     
-                    {/* Current Model Display */}
-                    <div className="mt-3 mb-4">
-                      <div className="text-xs text-gray-500 mb-1">Current Model:</div>
-                      <div className="font-medium text-sm bg-white px-2 py-1 rounded-md border">
+                    {/* Current Model Display - Read Only */}
+                    <div className="mt-4">
+                      <div className="text-xs text-gray-500 mb-2">Currently Active:</div>
+                      <div className="font-medium text-base bg-white px-4 py-3 rounded-lg border border-gray-200 shadow-sm">
                         {currentLLM === 'llama3.1' ? 'Llama 3.1 8B' : 
                          currentLLM === 'codellama' ? 'Code Llama 13B' : 
                          currentLLM === 'mixtral' ? 'Mixtral 8x7B' : 
                          currentLLM === 'meditron' ? 'Meditron 7B' : currentLLM}
                       </div>
-                    </div>
-
-                    {/* Model Toggle */}
-                    <div className="space-y-2">
-                      <button
-                        onClick={() => switchLLM('llama3.1')}
-                        className={`w-full px-3 py-2 text-xs rounded-md border transition-all ${
-                          currentLLM === 'llama3.1' 
-                            ? 'bg-blue-500 text-white border-blue-500' 
-                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                        }`}
-                        disabled={!llmStatus['llama3.1']}
-                      >
-                        Llama 3.1 8B {llmStatus['llama3.1'] ? '🟢' : '🔴'}
-                      </button>
-                      <button
-                        onClick={() => switchLLM('codellama')}
-                        className={`w-full px-3 py-2 text-xs rounded-md border transition-all ${
-                          currentLLM === 'codellama' 
-                            ? 'bg-blue-500 text-white border-blue-500' 
-                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                        }`}
-                        disabled={!llmStatus['codellama']}
-                      >
-                        Code Llama 13B {llmStatus['codellama'] ? '🟢' : '🔴'}
-                      </button>
-                      <button
-                        onClick={() => switchLLM('mixtral')}
-                        className={`w-full px-3 py-2 text-xs rounded-md border transition-all ${
-                          currentLLM === 'mixtral' 
-                            ? 'bg-blue-500 text-white border-blue-500' 
-                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                        }`}
-                        disabled={!llmStatus['mixtral']}
-                      >
-                        Mixtral 8x7B {llmStatus['mixtral'] ? '🟢' : '🔴'}
-                      </button>
-                      <button
-                        onClick={() => switchLLM('meditron')}
-                        className={`w-full px-3 py-2 text-xs rounded-md border transition-all ${
-                          currentLLM === 'meditron' 
-                            ? 'bg-blue-500 text-white border-blue-500' 
-                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                        }`}
-                        disabled={!llmStatus['meditron']}
-                      >
-                        Meditron 7B {llmStatus['meditron'] ? '🟢' : '🔴'}
-                      </button>
+                      <div className="text-xs text-gray-500 mt-3">
+                        Click to change model or switch to OpenAI
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2642,13 +2604,19 @@ const Dashboard = ({ onNavigate }) => {
             <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
               <h3 className="text-2xl font-semibold">LLM Provider Settings</h3>
               <button
-                onClick={() => setShowLLMSettings(false)}
+                onClick={() => {
+                  setShowLLMSettings(false);
+                  fetchLLMConfig(); // Reload current LLM config when closing
+                }}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
               >
                 ×
               </button>
             </div>
-            <Settings />
+            <Settings onSave={() => {
+              setShowLLMSettings(false);
+              fetchLLMConfig(); // Reload LLM config after save
+            }} />
           </div>
         </div>
       )}

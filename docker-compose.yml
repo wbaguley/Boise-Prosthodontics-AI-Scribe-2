@@ -16,6 +16,10 @@ services:
           memory: 8G
         reservations:
           memory: 4G
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # Mistral LLM Service
   mistral:
@@ -34,6 +38,10 @@ services:
           memory: 8G
         reservations:
           memory: 4G
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # Backend API Service
   backend:

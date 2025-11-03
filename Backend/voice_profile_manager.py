@@ -62,64 +62,121 @@ class VoiceProfileManager:
         provider_dir = self.profiles_dir / provider_name.replace(" ", "_").lower()
         provider_dir.mkdir(exist_ok=True)
         
+        # Create samples subdirectory for permanent audio storage
+        samples_dir = provider_dir / 'samples'
+        samples_dir.mkdir(exist_ok=True)
+        
+        # Backup old samples if they exist (in case new recording fails)
+        backup_dir = None
+        old_samples = list(samples_dir.glob("*.wav"))
+        if old_samples:
+            import shutil
+            backup_dir = provider_dir / 'samples_backup'
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir)
+            shutil.copytree(samples_dir, backup_dir)
+            logger.info(f"Backed up {len(old_samples)} existing samples")
+        
         embeddings = []
+        saved_files = []
         
-        if self.model_available and self.embedding_model:
-            # Extract embeddings using pyannote
-            for audio_file in audio_files:
-                try:
-                    embedding = self._extract_embedding_pyannote(audio_file)
-                    if embedding is not None:
-                        embeddings.append(embedding)
-                except Exception as e:
-                    logger.error(f"Error extracting embedding from {audio_file}: {e}")
-        else:
-            # Fallback: use simple audio features
-            for audio_file in audio_files:
-                try:
-                    features = self._extract_simple_features(audio_file)
-                    if features is not None:
-                        embeddings.append(features)
-                except Exception as e:
-                    logger.error(f"Error extracting features from {audio_file}: {e}")
-        
-        if not embeddings:
-            logger.error("No valid embeddings extracted")
-            return None
-        
-        # Average embeddings
-        avg_embedding = np.mean(embeddings, axis=0)
-        
-        # Save profile
-        profile = {
-            'provider_name': provider_name,
-            'embedding': avg_embedding.tolist(),
-            'num_samples': len(embeddings),
-            'created_at': datetime.now().isoformat(),
-            'model_type': 'pyannote' if self.model_available else 'simple'
-        }
-        
-        profile_path = provider_dir / 'profile.pkl'
-        with open(profile_path, 'wb') as f:
-            pickle.dump(profile, f)
-        
-        # Also save metadata as JSON
-        metadata_path = provider_dir / 'metadata.json'
-        metadata = {
-            'provider_name': provider_name,
-            'num_samples': len(embeddings),
-            'created_at': profile['created_at'],
-            'model_type': profile['model_type']
-        }
-        with open(metadata_path, 'w') as f:
-            json.dump(metadata, f, indent=2)
-        
-        logger.info(f"✅ Voice profile created for {provider_name}")
-        return {
-            'profile_path': str(profile_path),
-            'provider_name': provider_name,
-            'num_samples': len(embeddings)
-        }
+        try:
+            # Clear old samples from the samples directory
+            for old_file in samples_dir.glob("*.wav"):
+                old_file.unlink()
+            
+            if self.model_available and self.embedding_model:
+                # Extract embeddings using pyannote
+                for i, audio_file in enumerate(audio_files):
+                    try:
+                        embedding = self._extract_embedding_pyannote(audio_file)
+                        if embedding is not None:
+                            embeddings.append(embedding)
+                            # Copy audio file to permanent storage
+                            import shutil
+                            dest_file = samples_dir / f"sample_{i+1}.wav"
+                            shutil.copy2(audio_file, dest_file)
+                            saved_files.append(str(dest_file))
+                    except Exception as e:
+                        logger.error(f"Error extracting embedding from {audio_file}: {e}")
+            else:
+                # Fallback: use simple audio features
+                for i, audio_file in enumerate(audio_files):
+                    try:
+                        features = self._extract_simple_features(audio_file)
+                        if features is not None:
+                            embeddings.append(features)
+                            # Copy audio file to permanent storage
+                            import shutil
+                            dest_file = samples_dir / f"sample_{i+1}.wav"
+                            shutil.copy2(audio_file, dest_file)
+                            saved_files.append(str(dest_file))
+                    except Exception as e:
+                        logger.error(f"Error extracting features from {audio_file}: {e}")
+            
+            if not embeddings:
+                # Restore backup if new recording failed
+                if backup_dir and backup_dir.exists():
+                    import shutil
+                    if samples_dir.exists():
+                        shutil.rmtree(samples_dir)
+                    shutil.copytree(backup_dir, samples_dir)
+                    logger.warning("Restored old samples due to failed recording")
+                logger.error("No valid embeddings extracted")
+                return None
+            
+            # Average embeddings
+            avg_embedding = np.mean(embeddings, axis=0)
+            
+            # Save profile
+            profile = {
+                'provider_name': provider_name,
+                'embedding': avg_embedding.tolist(),
+                'num_samples': len(embeddings),
+                'created_at': datetime.now().isoformat(),
+                'model_type': 'pyannote' if self.model_available else 'simple',
+                'sample_files': saved_files
+            }
+            
+            profile_path = provider_dir / 'profile.pkl'
+            with open(profile_path, 'wb') as f:
+                pickle.dump(profile, f)
+            
+            # Also save metadata as JSON
+            metadata_path = provider_dir / 'metadata.json'
+            metadata = {
+                'provider_name': provider_name,
+                'num_samples': len(embeddings),
+                'created_at': profile['created_at'],
+                'model_type': profile['model_type'],
+                'sample_files': saved_files
+            }
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+            # Delete backup after successful creation
+            if backup_dir and backup_dir.exists():
+                import shutil
+                shutil.rmtree(backup_dir)
+                logger.info(f"Deleted backup after successful profile update")
+            
+            logger.info(f"✅ Voice profile created for {provider_name} with {len(saved_files)} permanent samples")
+            return {
+                'profile_path': str(profile_path),
+                'provider_name': provider_name,
+                'num_samples': len(embeddings),
+                'sample_files': saved_files
+            }
+            
+        except Exception as e:
+            # Restore backup on any error
+            if backup_dir and backup_dir.exists():
+                import shutil
+                if samples_dir.exists():
+                    shutil.rmtree(samples_dir)
+                shutil.copytree(backup_dir, samples_dir)
+                logger.error(f"Restored old samples due to error: {e}")
+            raise
     
     def _extract_embedding_pyannote(self, audio_path):
         """Extract embedding using pyannote"""

@@ -101,8 +101,13 @@ const Dashboard = ({ onNavigate }) => {
   const [uploadedFiles, setUploadedFiles] = useState([]);
 
   // LLM state management
-  const [currentLLM, setCurrentLLM] = useState('llama');
-  const [llmStatus, setLlmStatus] = useState({ llama: false, mistral: false });
+  const [currentLLM, setCurrentLLM] = useState('llama3.1');
+  const [llmStatus, setLlmStatus] = useState({ 
+    'llama3.1': false, 
+    'codellama': false, 
+    'mixtral': false, 
+    'meditron': false 
+  });
 
   // File upload reference
   const fileInputRef = useRef(null);
@@ -941,9 +946,14 @@ const Dashboard = ({ onNavigate }) => {
           <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs sm:text-sm font-medium text-gray-600">Current LLM</h3>
-              <div className={`w-3 h-3 rounded-full ${currentLLM === 'llama' ? (llmStatus.llama ? 'bg-green-500' : 'bg-red-500') : (llmStatus.mistral ? 'bg-green-500' : 'bg-red-500')}`}></div>
+              <div className={`w-3 h-3 rounded-full ${llmStatus[currentLLM] ? 'bg-green-500' : 'bg-red-500'}`}></div>
             </div>
-            <p className="text-lg sm:text-2xl font-bold text-gray-800 capitalize">{currentLLM}</p>
+            <p className="text-lg sm:text-2xl font-bold text-gray-800 capitalize">
+              {currentLLM === 'llama3.1' ? 'Llama 3.1 8B' : 
+               currentLLM === 'codellama' ? 'Code Llama 13B' : 
+               currentLLM === 'mixtral' ? 'Mixtral 8x7B' : 
+               currentLLM === 'meditron' ? 'Meditron 7B' : currentLLM}
+            </p>
           </div>
         </div>
 
@@ -1122,34 +1132,59 @@ const Dashboard = ({ onNavigate }) => {
                     {/* Current Model Display */}
                     <div className="mt-3 mb-4">
                       <div className="text-xs text-gray-500 mb-1">Current Model:</div>
-                      <div className="font-medium text-sm capitalize bg-white px-2 py-1 rounded-md border">
-                        {currentLLM}
+                      <div className="font-medium text-sm bg-white px-2 py-1 rounded-md border">
+                        {currentLLM === 'llama3.1' ? 'Llama 3.1 8B' : 
+                         currentLLM === 'codellama' ? 'Code Llama 13B' : 
+                         currentLLM === 'mixtral' ? 'Mixtral 8x7B' : 
+                         currentLLM === 'meditron' ? 'Meditron 7B' : currentLLM}
                       </div>
                     </div>
 
                     {/* Model Toggle */}
                     <div className="space-y-2">
                       <button
-                        onClick={() => switchLLM('llama')}
+                        onClick={() => switchLLM('llama3.1')}
                         className={`w-full px-3 py-2 text-xs rounded-md border transition-all ${
-                          currentLLM === 'llama' 
+                          currentLLM === 'llama3.1' 
                             ? 'bg-blue-500 text-white border-blue-500' 
                             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                         }`}
-                        disabled={!llmStatus.llama}
+                        disabled={!llmStatus['llama3.1']}
                       >
-                        Llama {llmStatus.llama ? '🟢' : '🔴'}
+                        Llama 3.1 8B {llmStatus['llama3.1'] ? '🟢' : '🔴'}
                       </button>
                       <button
-                        onClick={() => switchLLM('mistral')}
+                        onClick={() => switchLLM('codellama')}
                         className={`w-full px-3 py-2 text-xs rounded-md border transition-all ${
-                          currentLLM === 'mistral' 
+                          currentLLM === 'codellama' 
                             ? 'bg-blue-500 text-white border-blue-500' 
                             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                         }`}
-                        disabled={!llmStatus.mistral}
+                        disabled={!llmStatus['codellama']}
                       >
-                        Mistral {llmStatus.mistral ? '🟢' : '🔴'}
+                        Code Llama 13B {llmStatus['codellama'] ? '🟢' : '🔴'}
+                      </button>
+                      <button
+                        onClick={() => switchLLM('mixtral')}
+                        className={`w-full px-3 py-2 text-xs rounded-md border transition-all ${
+                          currentLLM === 'mixtral' 
+                            ? 'bg-blue-500 text-white border-blue-500' 
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                        }`}
+                        disabled={!llmStatus['mixtral']}
+                      >
+                        Mixtral 8x7B {llmStatus['mixtral'] ? '🟢' : '🔴'}
+                      </button>
+                      <button
+                        onClick={() => switchLLM('meditron')}
+                        className={`w-full px-3 py-2 text-xs rounded-md border transition-all ${
+                          currentLLM === 'meditron' 
+                            ? 'bg-blue-500 text-white border-blue-500' 
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                        }`}
+                        disabled={!llmStatus['meditron']}
+                      >
+                        Meditron 7B {llmStatus['meditron'] ? '🟢' : '🔴'}
                       </button>
                     </div>
                   </div>

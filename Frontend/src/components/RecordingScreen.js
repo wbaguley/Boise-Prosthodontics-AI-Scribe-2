@@ -134,7 +134,7 @@ const RecordingScreen = ({ onNavigate }) => {
             
             // Update progress based on status
             if (data.status.includes('Converting audio')) {
-              setProcessingStage('Converting audio');
+              setProcessingStage('Preparing audio');
               setProcessingProgress(25);
             } else if (data.status.includes('Transcribing')) {
               setProcessingStage('Transcribing with speaker detection');
@@ -152,16 +152,16 @@ const RecordingScreen = ({ onNavigate }) => {
                 setProcessingStage('');
               }, 2000);
             } else if (data.status.includes('Processing audio')) {
-              setProcessingStage('Processing audio');
+              setProcessingStage('Preparing audio');
               setProcessingProgress(20);
             } else if (data.status.includes('chunks')) {
-              // Handle recording chunk messages by showing incremental progress
+              // Handle recording chunk messages
               const chunkMatch = data.status.match(/(\d+) chunks/);
               if (chunkMatch) {
                 const chunks = parseInt(chunkMatch[1]);
                 const chunkProgress = Math.min(15 + (chunks * 2), 40); // 15% to 40% based on chunks
                 setProcessingProgress(chunkProgress);
-                setProcessingStage(`Recording... ${chunks} chunks`);
+                setProcessingStage('Processing your recording...');
               }
             }
           }

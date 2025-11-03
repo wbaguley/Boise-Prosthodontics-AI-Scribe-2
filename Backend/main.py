@@ -22,40 +22,18 @@ import re
 from cryptography.fernet import Fernet
 import base64
 import hashlib
-# Timezone imports - disable for now to fix immediate issues
-# import pytz
-# from timezone_utils import (
-#     now_in_system_timezone, 
-#     format_datetime_for_display, 
-#     format_date_for_display,
-#     format_for_soap_note,
-#     format_for_email_timestamp,
-#     get_session_id_with_timezone,
-#     get_available_timezones,
-#     validate_timezone
-# )
-
-# Simple timezone replacements
-def format_for_soap_note():
-    return datetime.now().strftime("%B %d, %Y")
-
-def format_for_email_timestamp():
-    return datetime.now().strftime("%B %d, %Y")
-
-def get_session_id_with_timezone():
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
-
-def now_in_system_timezone():
-    return datetime.now()
-
-def get_available_timezones():
-    return [{"name": "America/Denver", "display_name": "Mountain Time", "current_time": "12:00"}]
-
-def validate_timezone(tz_name):
-    return True
-
-def format_datetime_for_display(dt):
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
+# Timezone imports
+import pytz
+from timezone_utils import (
+    now_in_system_timezone, 
+    format_datetime_for_display, 
+    format_date_for_display,
+    format_for_soap_note,
+    format_for_email_timestamp,
+    get_session_id_with_timezone,
+    get_available_timezones,
+    validate_timezone
+)
 
 # Suppress warnings
 warnings.filterwarnings("ignore", message="FP16 is not supported on CPU")
@@ -83,23 +61,33 @@ app.add_middleware(
 OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://ollama:11434')
 MISTRAL_HOST = os.getenv('MISTRAL_HOST', 'http://mistral:11434')
 
-# Global LLM configuration - defaults to Llama
-CURRENT_LLM_MODEL = os.getenv('CURRENT_LLM_MODEL', 'llama')  # 'llama' or 'mistral'
-CURRENT_LLM_HOST = OLLAMA_HOST if CURRENT_LLM_MODEL == 'llama' else MISTRAL_HOST
+# Global LLM configuration - defaults to Llama 3.1
+CURRENT_LLM_MODEL = os.getenv('CURRENT_LLM_MODEL', 'llama3.1')  # 'llama3.1', 'codellama', 'mixtral', or 'meditron'
+CURRENT_LLM_HOST = OLLAMA_HOST
 WHISPER_MODEL_SIZE = os.getenv('WHISPER_MODEL', 'tiny')
 HF_TOKEN = os.getenv('HF_TOKEN', '')
 
 # LLM Configuration Dictionary
 LLM_CONFIGS = {
-    "llama": {
-        "name": "Llama 3",
-        "model": "llama3",
+    "llama3.1": {
+        "name": "Llama 3.1 8B",
+        "model": "llama3.1:8b",
         "host": OLLAMA_HOST
     },
-    "mistral": {
-        "name": "Mistral 7B",
-        "model": "mistral",
-        "host": MISTRAL_HOST
+    "codellama": {
+        "name": "Code Llama 13B",
+        "model": "codellama:13b",
+        "host": OLLAMA_HOST
+    },
+    "mixtral": {
+        "name": "Mixtral 8x7B",
+        "model": "mixtral:8x7b",
+        "host": OLLAMA_HOST
+    },
+    "meditron": {
+        "name": "Meditron 7B",
+        "model": "meditron:7b",
+        "host": OLLAMA_HOST
     }
 }
 
@@ -193,25 +181,38 @@ except Exception as e:
 # LLM Configuration Utility Functions
 def get_current_llm_config():
     """Get current LLM host and model configuration as dictionary"""
-    global CURRENT_LLM_MODEL, CURRENT_LLM_HOST
-    if CURRENT_LLM_MODEL == 'mistral':
+    global CURRENT_LLM_MODEL
+    
+    # Return config based on the current model
+    if CURRENT_LLM_MODEL in LLM_CONFIGS:
+        config = LLM_CONFIGS[CURRENT_LLM_MODEL]
         return {
-            "host": MISTRAL_HOST,
-            "model": "mistral"
+            "host": config["host"],
+            "model": config["model"]
         }
-    else:
-        return {
-            "host": OLLAMA_HOST,
-            "model": "llama3"
-        }
+    
+    # Default to llama3.1 if model not found
+    return {
+        "host": OLLAMA_HOST,
+        "model": "llama3.1:8b"
+    }
 
 def set_llm_model(model_type):
-    """Set the current LLM model (llama or mistral)"""
+    """Set the current LLM model (llama3.1, codellama, mixtral, or meditron)"""
     global CURRENT_LLM_MODEL, CURRENT_LLM_HOST
-    if model_type in ['llama', 'mistral']:
+    if model_type in LLM_CONFIGS:
         CURRENT_LLM_MODEL = model_type
-        CURRENT_LLM_HOST = OLLAMA_HOST if model_type == 'llama' else MISTRAL_HOST
+        CURRENT_LLM_HOST = LLM_CONFIGS[model_type]["host"]
         os.environ['CURRENT_LLM_MODEL'] = model_type
+        
+        # Save to config file
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), 'llm_config.json')
+            with open(config_path, 'w') as f:
+                json.dump({"current_model": model_type}, f)
+        except Exception as e:
+            logging.error(f"Failed to save LLM config: {e}")
+        
         return True
     return False
 
@@ -364,6 +365,96 @@ def convert_audio_to_wav(audio_data):
         logging.error(f"Audio conversion error: {e}")
         return None
 
+def identify_doctor_speaker_from_profile(audio_path, speaker_segments, doctor_name):
+    """
+    Identify which speaker in the diarization is the doctor using voice profile matching
+    
+    Args:
+        audio_path: Path to the audio file
+        speaker_segments: List of speaker segments from diarization
+        doctor_name: Name of the doctor to match
+        
+    Returns:
+        str: Speaker ID that matches the doctor (e.g., "SPEAKER_00") or None
+    """
+    try:
+        import torchaudio
+        import tempfile
+        from collections import defaultdict
+        
+        # Load the audio file
+        waveform, sample_rate = torchaudio.load(audio_path)
+        
+        # Convert to mono if needed
+        if waveform.shape[0] > 1:
+            waveform = torch.mean(waveform, dim=0, keepdim=True)
+        
+        # Group segments by speaker
+        speaker_audio_times = defaultdict(list)
+        for seg in speaker_segments:
+            speaker_audio_times[seg['speaker']].append((seg['start'], seg['end']))
+        
+        # For each unique speaker, extract some audio and match against voice profile
+        best_match_speaker = None
+        best_confidence = 0.0
+        
+        logging.info(f"🎯 Matching {len(speaker_audio_times)} speakers against voice profile for {doctor_name}")
+        
+        for speaker_id, time_ranges in speaker_audio_times.items():
+            # Extract up to 5 seconds of this speaker's audio
+            total_duration = 0
+            audio_chunks = []
+            
+            for start, end in sorted(time_ranges):
+                if total_duration >= 5.0:
+                    break
+                    
+                start_sample = int(start * sample_rate)
+                end_sample = int(end * sample_rate)
+                chunk = waveform[:, start_sample:end_sample]
+                audio_chunks.append(chunk)
+                total_duration += (end - start)
+            
+            if not audio_chunks:
+                continue
+            
+            # Concatenate chunks
+            speaker_audio = torch.cat(audio_chunks, dim=1)
+            
+            # Save to temporary file for voice matching
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+                torchaudio.save(tmp_path, speaker_audio, sample_rate)
+            
+            try:
+                # Match against voice profile
+                match_result = voice_manager.identify_speaker(tmp_path, [doctor_name])
+                
+                if match_result:
+                    confidence = match_result.get('confidence', 0)
+                    logging.info(f"   {speaker_id}: confidence={confidence:.3f}")
+                    
+                    if confidence > best_confidence:
+                        best_confidence = confidence
+                        best_match_speaker = speaker_id
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+        
+        if best_match_speaker and best_confidence > 0.4:  # Threshold for voice matching
+            logging.info(f"✅ Identified {best_match_speaker} as {doctor_name} with confidence {best_confidence:.3f}")
+            return best_match_speaker
+        else:
+            logging.warning(f"⚠️ No confident voice match found (best: {best_confidence:.3f})")
+            return None
+            
+    except Exception as e:
+        logging.error(f"Error in voice profile speaker identification: {e}")
+        return None
+
 def diarize_audio(audio_path):
     """Enhanced speaker diarization with better accuracy"""
     if not DIARIZATION_AVAILABLE or not DIARIZATION_PIPELINE:
@@ -427,6 +518,7 @@ def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_prof
         # Get speaker diarization if available
         speaker_segments = None
         num_speakers = 1
+        doctor_speaker = None  # Will be identified using voice profile if available
         
         if DIARIZATION_AVAILABLE:
             speaker_segments = diarize_audio(audio_path)
@@ -434,6 +526,25 @@ def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_prof
                 unique_speakers = set(seg['speaker'] for seg in speaker_segments)
                 num_speakers = len(unique_speakers)
                 logging.info(f"Detected {num_speakers} unique speakers: {unique_speakers}")
+                
+                # Use voice profile matching if enabled and provider has a profile
+                if use_voice_profile and doctor_name and num_speakers > 1:
+                    logging.info(f"🎯 Voice profile matching enabled for {doctor_name}")
+                    try:
+                        # Identify which speaker is the doctor using voice profile
+                        doctor_speaker = identify_doctor_speaker_from_profile(
+                            audio_path, 
+                            speaker_segments, 
+                            doctor_name
+                        )
+                        
+                        if doctor_speaker:
+                            logging.info(f"✅ Voice profile identified doctor as {doctor_speaker}")
+                        else:
+                            logging.warning(f"⚠️ Voice profile matching failed, falling back to heuristics")
+                    except Exception as e:
+                        logging.error(f"Error in voice profile matching: {e}")
+                        logging.info("Falling back to medical term analysis")
         
         # Process segments with enhanced logic
         formatted_lines = []
@@ -465,9 +576,8 @@ def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_prof
                             speaker_stats[speaker_id]['medical_terms'] += text_lower.count(term)
                         break
             
-            # Determine who is the doctor (usually speaks more medical terms and longer segments)
-            doctor_speaker = None
-            if len(speaker_stats) >= 2:
+            # Determine who is the doctor (only if voice profile didn't already identify them)
+            if doctor_speaker is None and len(speaker_stats) >= 2:
                 # Find speaker with most medical terms and longer average utterances
                 best_score = -1
                 for speaker_id, stats in speaker_stats.items():
@@ -479,7 +589,7 @@ def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_prof
                         best_score = score
                         doctor_speaker = speaker_id
                 
-                logging.info(f"Identified doctor speaker: {doctor_speaker} based on medical content analysis")
+                logging.info(f"Identified doctor speaker: {doctor_speaker} based on medical content analysis (fallback)")
             
             # Map segments to speakers
             for segment in result.get("segments", []):
@@ -1190,10 +1300,10 @@ async def save_voice_profile(
         if not temp_files:
             raise HTTPException(status_code=400, detail="No valid audio files")
         
-        # Create voice profile
+        # Create voice profile (this will now save the audio files permanently)
         profile_info = voice_manager.create_profile(doctor_name, temp_files)
         
-        # Cleanup temp files
+        # Cleanup temp files AFTER they've been copied to permanent storage
         for temp_file in temp_files:
             try:
                 os.unlink(temp_file)
@@ -1207,11 +1317,12 @@ async def save_voice_profile(
                 profile_info['profile_path']
             )
             
-            logging.info(f"Voice profile created for {doctor_name}")
+            logging.info(f"Voice profile created for {doctor_name} with {profile_info.get('num_samples', 0)} samples")
             return {
                 "status": "Voice profile saved successfully",
                 "provider": doctor_name,
-                "samples": profile_info['num_samples']
+                "samples": profile_info['num_samples'],
+                "sample_files": profile_info.get('sample_files', [])
             }
         else:
             raise HTTPException(status_code=500, detail="Failed to create voice profile")
@@ -1233,6 +1344,29 @@ async def get_voice_profile_info(provider_name: str):
     if info:
         return info
     raise HTTPException(status_code=404, detail="Voice profile not found")
+
+@app.get("/api/voice-profile/{provider_name}/samples")
+async def get_voice_samples(provider_name: str):
+    """Get list of saved voice samples for a provider"""
+    try:
+        provider_dir = Path("voice_profiles") / provider_name.replace(" ", "_").lower()
+        samples_dir = provider_dir / "samples"
+        
+        if not samples_dir.exists():
+            return {"samples": [], "count": 0}
+        
+        samples = []
+        for sample_file in sorted(samples_dir.glob("*.wav")):
+            samples.append({
+                "filename": sample_file.name,
+                "path": str(sample_file),
+                "size": sample_file.stat().st_size
+            })
+        
+        return {"samples": samples, "count": len(samples)}
+    except Exception as e:
+        logging.error(f"Error getting voice samples: {e}")
+        return {"samples": [], "count": 0}
 
 @app.delete("/api/voice-profile/{provider_name}")
 async def delete_voice_profile(provider_name: str):

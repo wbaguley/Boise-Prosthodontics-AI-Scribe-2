@@ -1,6 +1,13 @@
 {
   "provider_name": "Wyatt Baguley",
   "num_samples": 5,
-  "created_at": "2025-10-06T21:14:16.665666",
-  "model_type": "simple"
+  "created_at": "2025-10-29T04:02:06.642359",
+  "model_type": "simple",
+  "sample_files": [
+    "voice_profiles/wyatt_baguley/samples/sample_1.wav",
+    "voice_profiles/wyatt_baguley/samples/sample_2.wav",
+    "voice_profiles/wyatt_baguley/samples/sample_3.wav",
+    "voice_profiles/wyatt_baguley/samples/sample_4.wav",
+    "voice_profiles/wyatt_baguley/samples/sample_5.wav"
+  ]
 }

@@ -22,11 +22,15 @@ librosa==0.10.1
 soundfile==0.12.1
 pydub==0.25.1
 scipy==1.11.4
+noisereduce==3.0.0
 
 # API and Networking
 requests==2.31.0
 httpx==0.25.0
 aiofiles==23.2.1
+
+# LLM Providers
+openai>=1.0.0
 
 # Database
 sqlalchemy==2.0.23
@@ -45,3 +49,14 @@ secure-smtplib==0.1.1
 
 # Logging
 loguru==0.7.2
+
+# Export/Import
+reportlab==4.0.7
+python-docx==1.1.0
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+httpx==0.25.0

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer, Boolean
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer, Boolean, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -8,11 +8,25 @@ from uuid import uuid4
 
 Base = declarative_base()
 
+class Tenant(Base):
+    """Tenant table for multi-tenant support"""
+    __tablename__ = 'tenants'
+    
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, unique=True, nullable=False)
+    practice_name = Column(String, nullable=False)
+    config_path = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    subscription_tier = Column(String, default='free')  # free, pro, enterprise
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class Provider(Base):
     """Provider/Doctor table"""
     __tablename__ = 'providers'
     
     id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, ForeignKey('tenants.tenant_id'), nullable=True)  # Multi-tenant support
     name = Column(String, unique=True, nullable=False)
     specialty = Column(String, nullable=True)
     credentials = Column(String, nullable=True)
@@ -29,6 +43,7 @@ class Session(Base):
     
     id = Column(Integer, primary_key=True)
     session_id = Column(String, unique=True)
+    tenant_id = Column(String, ForeignKey('tenants.tenant_id'), nullable=True)  # Multi-tenant support
     provider_id = Column(Integer, nullable=True)  # Foreign key to Provider
     doctor_name = Column(String)
     patient_id = Column(String, nullable=True)
@@ -43,6 +58,11 @@ class Session(Base):
     audio_path = Column(String, nullable=True)
     template_used = Column(String, nullable=True)
     session_metadata = Column(Text, nullable=True)
+    # Dentrix integration fields
+    sent_to_dentrix = Column(Boolean, default=False)
+    dentrix_sent_at = Column(DateTime, nullable=True)
+    dentrix_note_id = Column(String, nullable=True)
+    dentrix_patient_id = Column(String, nullable=True)
 
 class SystemConfig(Base):
     """System configuration settings"""
@@ -312,7 +332,16 @@ def get_session_by_id(session_id):
                 'timestamp': session.timestamp.isoformat() if session.timestamp else '',
                 'transcript': session.transcript or '',
                 'soap_note': session.soap_note or '',
-                'template_used': session.template_used
+                'template_used': session.template_used,
+                'patient_name': session.patient_name,
+                'patient_id': session.patient_id,
+                'email_sent': session.email_sent,
+                'email_sent_at': session.email_sent_at.isoformat() if session.email_sent_at else None,
+                'post_visit_email': session.post_visit_email,
+                'sent_to_dentrix': session.sent_to_dentrix,
+                'dentrix_sent_at': session.dentrix_sent_at.isoformat() if session.dentrix_sent_at else None,
+                'dentrix_note_id': session.dentrix_note_id,
+                'dentrix_patient_id': session.dentrix_patient_id
             }
         return None
     except Exception as e:
@@ -432,6 +461,29 @@ def mark_email_sent(session_id: str):
         return False
     except Exception as e:
         print(f"Error marking email as sent: {e}")
+        db.rollback()
+        return False
+    finally:
+        db.close()
+
+def update_session_dentrix_status(session_id: str, dentrix_note_id: str = None, dentrix_patient_id: str = None, sent_to_dentrix: bool = True):
+    """Update session with Dentrix integration status"""
+    db = SessionLocal()
+    try:
+        session = db.query(Session).filter(Session.session_id == session_id).first()
+        if session:
+            session.sent_to_dentrix = sent_to_dentrix
+            if sent_to_dentrix:
+                session.dentrix_sent_at = datetime.utcnow()
+            if dentrix_note_id:
+                session.dentrix_note_id = str(dentrix_note_id)
+            if dentrix_patient_id:
+                session.dentrix_patient_id = str(dentrix_patient_id)
+            db.commit()
+            return True
+        return False
+    except Exception as e:
+        print(f"Error updating session Dentrix status: {e}")
         db.rollback()
         return False
     finally:
@@ -666,3 +718,152 @@ def initialize_default_configs():
             set_system_config(key, value, description)
     
     print("Default system configurations initialized")
+
+# ============================================
+# Tenant CRUD Operations
+# ============================================
+
+def create_tenant(tenant_id, practice_name, subscription_tier='free', config_path=None):
+    """Create a new tenant"""
+    db = SessionLocal()
+    try:
+        # Check if tenant already exists
+        existing = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if existing:
+            return {'error': f'Tenant {tenant_id} already exists'}
+        
+        tenant = Tenant(
+            tenant_id=tenant_id,
+            practice_name=practice_name,
+            subscription_tier=subscription_tier,
+            config_path=config_path or f"/app/config/tenants/{tenant_id}.json",
+            is_active=True
+        )
+        db.add(tenant)
+        db.commit()
+        db.refresh(tenant)
+        
+        return {
+            'id': tenant.id,
+            'tenant_id': tenant.tenant_id,
+            'practice_name': tenant.practice_name,
+            'config_path': tenant.config_path,
+            'subscription_tier': tenant.subscription_tier,
+            'is_active': tenant.is_active,
+            'created_at': tenant.created_at
+        }
+    except Exception as e:
+        print(f"Error creating tenant: {e}")
+        db.rollback()
+        return {'error': str(e)}
+    finally:
+        db.close()
+
+def get_tenant_by_id(tenant_id):
+    """Get tenant by ID"""
+    db = SessionLocal()
+    try:
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if not tenant:
+            return None
+        
+        return {
+            'id': tenant.id,
+            'tenant_id': tenant.tenant_id,
+            'practice_name': tenant.practice_name,
+            'config_path': tenant.config_path,
+            'subscription_tier': tenant.subscription_tier,
+            'is_active': tenant.is_active,
+            'created_at': tenant.created_at,
+            'updated_at': tenant.updated_at
+        }
+    except Exception as e:
+        print(f"Error getting tenant: {e}")
+        return None
+    finally:
+        db.close()
+
+def get_all_tenants(active_only=False):
+    """Get all tenants"""
+    db = SessionLocal()
+    try:
+        query = db.query(Tenant)
+        if active_only:
+            query = query.filter(Tenant.is_active == True)
+        
+        tenants = query.order_by(Tenant.practice_name).all()
+        return [
+            {
+                'id': t.id,
+                'tenant_id': t.tenant_id,
+                'practice_name': t.practice_name,
+                'config_path': t.config_path,
+                'subscription_tier': t.subscription_tier,
+                'is_active': t.is_active,
+                'created_at': t.created_at,
+                'updated_at': t.updated_at
+            }
+            for t in tenants
+        ]
+    except Exception as e:
+        print(f"Error getting all tenants: {e}")
+        return []
+    finally:
+        db.close()
+
+def update_tenant(tenant_id, **kwargs):
+    """Update tenant information"""
+    db = SessionLocal()
+    try:
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if not tenant:
+            return {'error': f'Tenant {tenant_id} not found'}
+        
+        # Update allowed fields
+        allowed_fields = ['practice_name', 'config_path', 'subscription_tier', 'is_active']
+        for key, value in kwargs.items():
+            if key in allowed_fields and value is not None:
+                setattr(tenant, key, value)
+        
+        tenant.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(tenant)
+        
+        return {
+            'id': tenant.id,
+            'tenant_id': tenant.tenant_id,
+            'practice_name': tenant.practice_name,
+            'config_path': tenant.config_path,
+            'subscription_tier': tenant.subscription_tier,
+            'is_active': tenant.is_active,
+            'updated_at': tenant.updated_at
+        }
+    except Exception as e:
+        print(f"Error updating tenant: {e}")
+        db.rollback()
+        return {'error': str(e)}
+    finally:
+        db.close()
+
+def delete_tenant(tenant_id, hard_delete=False):
+    """Delete tenant (soft delete by default)"""
+    db = SessionLocal()
+    try:
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if not tenant:
+            return {'error': f'Tenant {tenant_id} not found'}
+        
+        if hard_delete:
+            db.delete(tenant)
+        else:
+            tenant.is_active = False
+            tenant.updated_at = datetime.utcnow()
+        
+        db.commit()
+        return {'success': True, 'message': f'Tenant {tenant_id} deleted'}
+    except Exception as e:
+        print(f"Error deleting tenant: {e}")
+        db.rollback()
+        return {'error': str(e)}
+    finally:
+        db.close()

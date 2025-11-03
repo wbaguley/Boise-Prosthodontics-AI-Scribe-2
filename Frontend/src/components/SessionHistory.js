@@ -15,6 +15,10 @@ const SessionHistory = ({ onNavigate }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   
+  // Sort states
+  const [sortBy, setSortBy] = useState('date'); // 'date', 'provider', 'patient'
+  const [sortOrder, setSortOrder] = useState('desc'); // 'asc', 'desc'
+  
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [sessionsPerPage] = useState(20);
@@ -26,15 +30,28 @@ const SessionHistory = ({ onNavigate }) => {
 
   useEffect(() => {
     applyFilters();
-  }, [sessions, searchTerm, selectedProvider, startDate, endDate]);
+  }, [sessions, searchTerm, selectedProvider, startDate, endDate, sortBy, sortOrder]);
 
   const fetchSessions = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/sessions`);
+      
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('search', searchTerm);
+      if (selectedProvider) params.append('provider', selectedProvider);
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      if (sortBy) params.append('sort_by', sortBy);
+      if (sortOrder) params.append('sort_order', sortOrder);
+      
+      const queryString = params.toString();
+      const url = `${API_URL}/api/sessions${queryString ? `?${queryString}` : ''}`;
+      
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        // Sort by timestamp, newest first
+        // Sort by timestamp, newest first (fallback if server doesn't sort)
         const sortedSessions = data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         setSessions(sortedSessions);
       } else {
@@ -98,6 +115,27 @@ const SessionHistory = ({ onNavigate }) => {
       });
     }
 
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let compareValue = 0;
+      
+      switch (sortBy) {
+        case 'date':
+          compareValue = new Date(a.timestamp) - new Date(b.timestamp);
+          break;
+        case 'provider':
+          compareValue = (a.doctor || '').localeCompare(b.doctor || '');
+          break;
+        case 'patient':
+          compareValue = (a.session_id || '').localeCompare(b.session_id || '');
+          break;
+        default:
+          compareValue = new Date(a.timestamp) - new Date(b.timestamp);
+      }
+      
+      return sortOrder === 'asc' ? compareValue : -compareValue;
+    });
+
     setFilteredSessions(filtered);
     setCurrentPage(1); // Reset to first page when filters change
   };
@@ -107,6 +145,8 @@ const SessionHistory = ({ onNavigate }) => {
     setSelectedProvider('');
     setStartDate('');
     setEndDate('');
+    setSortBy('date');
+    setSortOrder('desc');
   };
 
   const formatDate = (timestamp) => {
@@ -228,7 +268,7 @@ const SessionHistory = ({ onNavigate }) => {
         {/* Filters */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold">Filters</h2>
+            <h2 className="text-lg font-semibold">Filters & Sort</h2>
             <button
               onClick={clearFilters}
               className="text-sm text-blue-600 hover:text-blue-800"
@@ -237,9 +277,9 @@ const SessionHistory = ({ onNavigate }) => {
             </button>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             {/* Search */}
-            <div>
+            <div className="lg:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Search
               </label>
@@ -247,7 +287,7 @@ const SessionHistory = ({ onNavigate }) => {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search sessions, doctors, content..."
+                placeholder="Search sessions, doctors, transcript, SOAP notes..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -295,6 +335,51 @@ const SessionHistory = ({ onNavigate }) => {
                 onChange={(e) => setEndDate(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+
+            {/* Sort By */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Sort By
+              </label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="date">Date</option>
+                <option value="provider">Provider</option>
+                <option value="patient">Session ID</option>
+              </select>
+            </div>
+
+            {/* Sort Order */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Sort Order
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSortOrder('asc')}
+                  className={`flex-1 px-3 py-2 border rounded-lg transition-colors ${
+                    sortOrder === 'asc'
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  ↑ Asc
+                </button>
+                <button
+                  onClick={() => setSortOrder('desc')}
+                  className={`flex-1 px-3 py-2 border rounded-lg transition-colors ${
+                    sortOrder === 'desc'
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  ↓ Desc
+                </button>
+              </div>
             </div>
           </div>
 

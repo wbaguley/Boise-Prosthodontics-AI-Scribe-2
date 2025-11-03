@@ -1,8 +1,10 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile, Form, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, List
 import os
+import io
 import logging
 from dotenv import load_dotenv
 
@@ -57,6 +59,72 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Tenant context middleware
+@app.middleware("http")
+async def tenant_context_middleware(request: Request, call_next):
+    """
+    Extract tenant context from request and attach to request.state
+    Supports multiple methods:
+    1. X-Tenant-ID header
+    2. Subdomain extraction (tenant.domain.com)
+    3. Default to 'default' tenant if not specified
+    """
+    tenant_id = None
+    
+    # Method 1: Check X-Tenant-ID header
+    tenant_id = request.headers.get("X-Tenant-ID")
+    
+    # Method 2: Extract from subdomain (if no header)
+    if not tenant_id:
+        host = request.headers.get("host", "")
+        if host:
+            # Extract subdomain (e.g., "tenant.example.com" -> "tenant")
+            parts = host.split(".")
+            if len(parts) > 2:
+                tenant_id = parts[0]
+    
+    # Method 3: Default tenant
+    if not tenant_id or tenant_id in ["localhost", "127", "www"]:
+        tenant_id = "default"
+    
+    # Load tenant configuration
+    try:
+        if tenant_manager.tenant_exists(tenant_id):
+            tenant_config = tenant_manager.load_tenant_config(tenant_id)
+        else:
+            # Create default tenant if it doesn't exist
+            if tenant_id == "default":
+                default_config = tenant_manager.get_default_config()
+                tenant_manager.save_tenant_config(default_config)
+                # Also create in database
+                create_tenant(
+                    tenant_id="default",
+                    practice_name="Boise Prosthodontics",
+                    subscription_tier="enterprise"
+                )
+                tenant_config = default_config
+            else:
+                # Tenant not found - return 404
+                return JSONResponse(
+                    status_code=404,
+                    content={"detail": f"Tenant '{tenant_id}' not found"}
+                )
+        
+        # Attach to request state
+        request.state.tenant_id = tenant_id
+        request.state.tenant_config = tenant_config
+        
+    except Exception as e:
+        logging.error(f"Error loading tenant config for {tenant_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to load tenant configuration"}
+        )
+    
+    response = await call_next(request)
+    return response
+
+
 # Configuration
 OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://ollama:11434')
 MISTRAL_HOST = os.getenv('MISTRAL_HOST', 'http://mistral:11434')
@@ -64,7 +132,7 @@ MISTRAL_HOST = os.getenv('MISTRAL_HOST', 'http://mistral:11434')
 # Global LLM configuration - defaults to Llama 3.1
 CURRENT_LLM_MODEL = os.getenv('CURRENT_LLM_MODEL', 'llama3.1')  # 'llama3.1', 'codellama', 'mixtral', or 'meditron'
 CURRENT_LLM_HOST = OLLAMA_HOST
-WHISPER_MODEL_SIZE = os.getenv('WHISPER_MODEL', 'tiny')
+WHISPER_MODEL_SIZE = os.getenv('WHISPER_MODEL', 'medium')
 HF_TOKEN = os.getenv('HF_TOKEN', '')
 
 # LLM Configuration Dictionary
@@ -97,14 +165,52 @@ from database import (
     create_provider, get_all_providers, get_provider_by_id, get_provider_by_name,
     update_provider, delete_provider, update_provider_voice_profile,
     update_session_patient_info, update_session_email_content, mark_email_sent, get_session_email_status,
-    update_session_soap, update_session_template
+    update_session_soap, update_session_template, SessionLocal, SystemConfig, Tenant,
+    create_tenant, get_tenant_by_id, get_all_tenants, update_tenant, delete_tenant
 )
+from tenant_config import TenantConfig, tenant_manager
+from export_service import export_service
+from import_service import import_service
+
+# Import medical vocabulary for Whisper prompting
+from medical_vocabulary import get_medical_vocabulary
+# Import audio processor for noise reduction
+from audio_processor import get_audio_processor
+# Import Dentrix client for practice management integration
+from dentrix_client import get_dentrix_client
+# Import LLM provider abstraction layer
+from llm_provider import LLMConfig, get_llm_client
 from templates import TemplateManager
 from voice_profile_manager import VoiceProfileManager
 
 # Initialize managers
 template_manager = TemplateManager()
 voice_manager = VoiceProfileManager()
+audio_processor = get_audio_processor(enable_noise_reduction=True, enable_normalization=True)
+
+# Load encrypted OpenAI API key from database if using OpenAI
+def load_openai_key_from_db():
+    """Load decrypted OpenAI API key from database storage"""
+    try:
+        db = get_db()
+        stored_key = db.query(SystemConfig).filter(SystemConfig.key == "openai_api_key_encrypted").first()
+        if stored_key:
+            decrypted_key = encryption_manager.decrypt_data(stored_key.value)
+            os.environ["OPENAI_API_KEY"] = decrypted_key
+            logging.info("✅ Loaded OpenAI API key from encrypted database storage")
+            return True
+        return False
+    except Exception as e:
+        logging.error(f"Error loading OpenAI key from database: {e}")
+        return False
+
+# Initialize LLM client from environment
+# Load API key from database if provider is OpenAI
+if os.getenv("LLM_PROVIDER", "ollama") == "openai":
+    load_openai_key_from_db()
+
+llm_config = LLMConfig.load_from_env()
+llm_client = get_llm_client(llm_config)
 
 def convert_template_name_to_id(template_name):
     """Convert template display name to file ID"""
@@ -317,6 +423,11 @@ class EncryptionManager:
 # Initialize encryption manager
 encryption_manager = EncryptionManager()
 
+# Database helper function
+def get_db():
+    """Get a database session"""
+    return SessionLocal()
+
 class SessionManager:
     def __init__(self):
         self.sessions = {}
@@ -500,22 +611,74 @@ def diarize_audio(audio_path):
         logging.error(f"Diarization error: {e}")
         return None
 
-def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_profile=False):
-    """Enhanced transcription with improved speaker detection"""
+def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_profile=False, provider_id=None):
+    """Enhanced transcription with improved speaker detection and medical vocabulary prompting"""
     
     if not WHISPER_AVAILABLE or not WHISPER_MODEL:
         return generate_mock_transcript()
     
     try:
-        # Get transcription with timestamps
+        # Step 1: Audio Quality Check and Preprocessing
+        logging.info("🔍 Checking audio quality...")
+        quality_metrics = audio_processor.check_audio_quality(audio_path)
+        
+        if quality_metrics['warnings']:
+            for warning in quality_metrics['warnings']:
+                logging.warning(f"⚠️ Audio Quality: {warning}")
+        
+        if not quality_metrics['is_valid']:
+            logging.error("❌ Audio quality check failed - proceeding anyway")
+        else:
+            logging.info(f"✅ Audio quality OK: {quality_metrics['duration']:.1f}s at {quality_metrics['sample_rate']}Hz")
+        
+        # Step 2: Apply Noise Reduction and Preprocessing
+        logging.info("🎵 Applying noise reduction and audio preprocessing...")
+        processed_audio_path = audio_processor.reduce_noise(audio_path)
+        logging.info(f"✅ Audio preprocessing complete: {processed_audio_path}")
+        
+        # Use processed audio for transcription and diarization
+        audio_to_transcribe = processed_audio_path
+        
+        # Step 3: Get medical vocabulary prompt based on provider specialty
+        medical_prompt = "This is a dental consultation between a doctor and patient about crowns, implants, and prosthodontics."
+        
+        if provider_id:
+            try:
+                provider = get_provider_by_id(provider_id)
+                if provider and provider.get('specialty'):
+                    specialty = provider['specialty'].lower()
+                    vocab_manager = get_medical_vocabulary()
+                    medical_prompt = vocab_manager.get_prompt_for_specialty(specialty)
+                    logging.info(f"🎯 Using {specialty} medical vocabulary for Whisper prompting")
+                else:
+                    # Default to prosthodontics if no specialty specified
+                    vocab_manager = get_medical_vocabulary()
+                    medical_prompt = vocab_manager.get_prosthodontics_prompt()
+                    logging.info("📋 Using default prosthodontics vocabulary")
+            except Exception as e:
+                logging.error(f"Error loading medical vocabulary: {e}, using default prompt")
+        
+        # Step 4: Transcribe with Whisper using cleaned audio and medical vocabulary
+        logging.info("🎤 Transcribing with Whisper...")
         result = WHISPER_MODEL.transcribe(
-            audio_path,
+            audio_to_transcribe,
             language="en",
             word_timestamps=True,
-            initial_prompt="This is a dental consultation between a doctor and patient about crowns, implants, and prosthodontics."
+            initial_prompt=medical_prompt,
+            condition_on_previous_text=True
         )
         
-        # Get speaker diarization if available
+        logging.info(f"✅ Transcription complete with medical vocabulary prompting")
+        
+        # Clean up processed audio file
+        try:
+            if processed_audio_path != audio_path and os.path.exists(processed_audio_path):
+                os.unlink(processed_audio_path)
+                logging.debug(f"🧹 Cleaned up processed audio: {processed_audio_path}")
+        except Exception as e:
+            logging.warning(f"Could not clean up processed audio: {e}")
+        
+        # Step 5: Get speaker diarization if available (use original audio for diarization)
         speaker_segments = None
         num_speakers = 1
         doctor_speaker = None  # Will be identified using voice profile if available
@@ -1475,7 +1638,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             transcript = transcribe_audio_with_diarization(
                                 wav_path, 
                                 doctor_name,
-                                use_voice_profile=use_voice_profile
+                                use_voice_profile=use_voice_profile,
+                                provider_id=provider_id
                             )
                             
                             if wav_path and os.path.exists(wav_path):
@@ -2033,9 +2197,31 @@ async def decrypt_patient_data_endpoint(encrypted_data: dict):
 # ============================================
 
 @app.get("/api/config")
-async def get_config():
-    """Get current configuration settings (without sensitive data)"""
+async def get_config(request: Request):
+    """Get current configuration settings including tenant config (without sensitive data)"""
     try:
+        # Get tenant configuration - with fallback to default
+        tenant_config = getattr(request.state, 'tenant_config', None)
+        
+        if not tenant_config:
+            # Load default tenant config as fallback
+            try:
+                tenant_config = tenant_manager.load_tenant_config("default")
+                if not tenant_config:
+                    # Create default config
+                    tenant_config = tenant_manager.get_default_config()
+                    tenant_manager.save_tenant_config(tenant_config)
+            except Exception as e:
+                logging.error(f"Failed to load default tenant config: {e}")
+                # Use hardcoded defaults
+                from tenant_config import TenantConfig
+                tenant_config = TenantConfig(
+                    tenant_id="default",
+                    practice_name="Boise Prosthodontics",
+                    primary_color="#3B82F6",
+                    secondary_color="#8B5CF6"
+                )
+        
         return {
             "email": {
                 "smtp_server": os.getenv('SMTP_SERVER', ''),
@@ -2050,11 +2236,25 @@ async def get_config():
             "ai": {
                 "ollama_host": os.getenv('OLLAMA_HOST', 'http://ollama:11434'),
                 "whisper_model": os.getenv('WHISPER_MODEL', 'tiny')
+            },
+            # Add tenant configuration
+            "tenant": {
+                "success": True,
+                "tenant_id": tenant_config.tenant_id,
+                "practice_name": tenant_config.practice_name,
+                "logo_url": tenant_config.logo_url,
+                "primary_color": tenant_config.primary_color,
+                "secondary_color": tenant_config.secondary_color,
+                "features_enabled": tenant_config.features_enabled,
+                "llm_provider": tenant_config.llm_provider,
+                "whisper_model": tenant_config.whisper_model
             }
         }
     except Exception as e:
         logging.error(f"Config retrieval error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve configuration")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve configuration: {str(e)}")
 
 @app.post("/api/config/email")
 async def update_email_config(config: dict):
@@ -2529,159 +2729,6 @@ The AI should incorporate this guidance in all future responses to maintain cons
         logging.error(f"Auto-learning error: {e}")
         raise HTTPException(status_code=500, detail="Failed to process auto-learning")
 
-# ====== LLM MODEL MANAGEMENT ENDPOINTS ======
-
-@app.get("/api/llm/config")
-async def get_llm_config():
-    """Get current LLM configuration"""
-    try:
-        # Format current config as an object matching the frontend expectations
-        current_llm_config = get_current_llm_config()
-        formatted_config = None
-        
-        # Find the current model configuration
-        formatted_config = None
-        for model_key, config in LLM_CONFIGS.items():
-            if config["host"] == current_llm_config["host"] and config["model"] == current_llm_config["model"]:
-                formatted_config = {
-                    "key": model_key,
-                    "name": config["name"],
-                    "model": config["model"],
-                    "host": config["host"]
-                }
-                break
-        
-        return {"success": True, "config": formatted_config}
-    except Exception as e:
-        logging.error(f"Error getting LLM config: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get LLM configuration")
-
-@app.post("/api/llm/config")
-async def set_llm_config(request: dict):
-    """Set current LLM configuration"""
-    try:
-        model_name = request.get("model", "llama")
-        if model_name not in LLM_CONFIGS:
-            raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
-        
-        # Save the configuration choice to a file
-        config_path = os.path.join(os.path.dirname(__file__), "llm_config.json")
-        with open(config_path, "w") as f:
-            json.dump({"current_model": model_name}, f)
-        
-        # Update global variables
-        set_llm_model(model_name)
-        
-        # Format config as an object matching the frontend expectations
-        config_data = LLM_CONFIGS[model_name]
-        formatted_config = {
-            "key": model_name,
-            "name": config_data["name"],
-            "model": config_data["model"],
-            "host": config_data["host"]
-        }
-        
-        return {"success": True, "config": formatted_config, "message": f"LLM switched to {config_data['name']}"}
-    except Exception as e:
-        logging.error(f"Error setting LLM config: {e}")
-        raise HTTPException(status_code=500, detail="Failed to set LLM configuration")
-
-@app.get("/api/llm/models")
-async def get_available_models():
-    """Get list of available LLM models"""
-    try:
-        models = []
-        for model_key, config in LLM_CONFIGS.items():
-            # Test connectivity to each model
-            try:
-                response = requests.get(f"{config['host']}/api/tags", timeout=5)
-                available = response.status_code == 200
-            except:
-                available = False
-                
-            models.append({
-                "key": model_key,
-                "name": config["name"],
-                "model": config["model"],
-                "host": config["host"],
-                "available": available
-            })
-        
-        # Format current config as an object matching the frontend expectations
-        current_llm_config = get_current_llm_config()
-        current_config = None
-        
-        # Find the current model configuration
-        for model_key, config in LLM_CONFIGS.items():
-            if config["host"] == current_llm_config["host"] and config["model"] == current_llm_config["model"]:
-                current_config = {
-                    "key": model_key,
-                    "name": config["name"],
-                    "model": config["model"],
-                    "host": config["host"]
-                }
-                break
-        
-        return {
-            "success": True,
-            "models": models,
-            "current": current_config
-        }
-    except Exception as e:
-        logging.error(f"Error getting available models: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get available models")
-
-@app.post("/api/llm/test")
-async def test_llm_connection(request: dict):
-    """Test connection to a specific LLM model"""
-    try:
-        model_name = request.get("model", "llama")
-        if model_name not in LLM_CONFIGS:
-            raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
-        
-        config = LLM_CONFIGS[model_name]
-        
-        # Test basic connectivity
-        response = requests.get(f"{config['host']}/api/tags", timeout=10)
-        if response.status_code != 200:
-            return {"success": False, "error": "Cannot connect to LLM service"}
-        
-        # Test model availability
-        tags_data = response.json()
-        available_models = [model["name"] for model in tags_data.get("models", [])]
-        
-        if config["model"] not in available_models:
-            return {
-                "success": False, 
-                "error": f"Model {config['model']} not found. Available models: {', '.join(available_models)}"
-            }
-        
-        # Test generation
-        test_response = requests.post(
-            f"{config['host']}/api/generate",
-            json={
-                "model": config["model"],
-                "prompt": "Test connection. Respond with 'OK'.",
-                "stream": False,
-                "options": {"temperature": 0.1}
-            },
-            timeout=15
-        )
-        
-        if test_response.status_code == 200:
-            result = test_response.json().get("response", "").strip()
-            return {
-                "success": True,
-                "message": f"Successfully connected to {config['name']}",
-                "response": result
-            }
-        else:
-            return {"success": False, "error": "Model failed to generate response"}
-            
-    except Exception as e:
-        logging.error(f"Error testing LLM connection: {e}")
-        return {"success": False, "error": str(e)}
-
 @app.get("/api/llm/status")
 async def get_llm_status():
     """Get status of all available LLM models"""
@@ -2828,6 +2875,910 @@ async def get_current_timezone():
     except Exception as e:
         logging.error(f"Error getting current timezone: {e}")
         raise HTTPException(status_code=500, detail="Failed to get current timezone")
+
+
+# ============================================================================
+# LLM PROVIDER CONFIGURATION
+# ============================================================================
+
+@app.get("/api/llm/config")
+async def get_llm_config_info():
+    """
+    Get current LLM provider configuration (without sensitive data like API keys)
+    
+    Returns:
+        dict: Current LLM provider and model information
+    """
+    try:
+        config_info = llm_config.get_info()
+        
+        # Check if OpenAI API key is stored in database (encrypted)
+        db = get_db()
+        stored_key = db.query(SystemConfig).filter(SystemConfig.key == "openai_api_key_encrypted").first()
+        has_openai_key = stored_key is not None
+        
+        return {
+            "success": True,
+            "llm_provider": config_info["provider"],
+            "model": config_info["model"],
+            "host": config_info["host"],
+            "has_api_key": has_openai_key  # Indicate if API key is configured
+        }
+    except Exception as e:
+        logging.error(f"Error getting LLM config: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get LLM configuration")
+
+
+@app.post("/api/llm/config")
+async def update_llm_config(request: dict):
+    """
+    Update LLM provider configuration with encrypted API key storage
+    
+    Args:
+        request: dict with provider, openai_api_key, openai_model, ollama_model
+    
+    Returns:
+        dict: Success status
+    """
+    try:
+        provider = request.get("provider", "ollama")
+        
+        # Build environment variables to update
+        env_updates = {
+            "LLM_PROVIDER": provider
+        }
+        
+        db = get_db()
+        
+        if provider == "openai":
+            api_key = request.get("openai_api_key")
+            model = request.get("openai_model", "gpt-4o-mini")
+            
+            # If API key is provided, encrypt and store it in database
+            if api_key:
+                encrypted_key = encryption_manager.encrypt_data(api_key)
+                
+                # Store or update encrypted key in database
+                stored_key = db.query(SystemConfig).filter(SystemConfig.key == "openai_api_key_encrypted").first()
+                if stored_key:
+                    stored_key.value = encrypted_key
+                    stored_key.updated_at = datetime.utcnow()
+                else:
+                    stored_key = SystemConfig(
+                        key="openai_api_key_encrypted",
+                        value=encrypted_key,
+                        description="Encrypted OpenAI API key"
+                    )
+                    db.add(stored_key)
+                db.commit()
+                
+                logging.info("✅ OpenAI API key encrypted and saved to database")
+            
+            env_updates["OPENAI_MODEL"] = model
+        else:
+            model = request.get("ollama_model", "llama3.1:8b")
+            env_updates["OLLAMA_MODEL"] = model
+        
+        # Update .env file (without API key - only provider and model)
+        env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+        
+        # Read current .env
+        env_lines = []
+        if os.path.exists(env_path):
+            with open(env_path, 'r') as f:
+                env_lines = f.readlines()
+        
+        # Update or add new values
+        updated_keys = set()
+        new_lines = []
+        
+        for line in env_lines:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                new_lines.append(line)
+                continue
+            
+            key = line.split('=')[0]
+            if key in env_updates:
+                new_lines.append(f"{key}={env_updates[key]}")
+                updated_keys.add(key)
+            else:
+                new_lines.append(line)
+        
+        # Add any new keys that weren't in the file
+        for key, value in env_updates.items():
+            if key not in updated_keys:
+                new_lines.append(f"{key}={value}")
+        
+        # Write back to .env
+        with open(env_path, 'w') as f:
+            f.write('\n'.join(new_lines) + '\n')
+        
+        # Reload configuration with decrypted API key if using OpenAI
+        global llm_config, llm_client
+        
+        # If OpenAI, load API key from encrypted database storage
+        if provider == "openai":
+            stored_key = db.query(SystemConfig).filter(SystemConfig.key == "openai_api_key_encrypted").first()
+            if stored_key:
+                decrypted_key = encryption_manager.decrypt_data(stored_key.value)
+                os.environ["OPENAI_API_KEY"] = decrypted_key
+        
+        llm_config = LLMConfig.load_from_env()
+        llm_client = get_llm_client(llm_config)
+        
+        logging.info(f"✅ LLM configuration updated to {provider}")
+        
+        return {
+            "success": True,
+            "message": f"LLM provider updated to {provider}",
+            "provider": provider,
+            "model": env_updates.get("OPENAI_MODEL") or env_updates.get("OLLAMA_MODEL")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error updating LLM config: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update LLM configuration: {str(e)}")
+
+
+@app.delete("/api/llm/config/api-key")
+async def delete_api_key():
+    """
+    Delete the stored OpenAI API key from encrypted database storage
+    
+    Returns:
+        dict: Success status
+    """
+    try:
+        db = get_db()
+        
+        # Find and delete the encrypted API key
+        stored_key = db.query(SystemConfig).filter(SystemConfig.key == "openai_api_key_encrypted").first()
+        
+        if stored_key:
+            db.delete(stored_key)
+            db.commit()
+            logging.info("✅ OpenAI API key deleted from database")
+            
+            # Clear from environment
+            if "OPENAI_API_KEY" in os.environ:
+                del os.environ["OPENAI_API_KEY"]
+            
+            # Switch to Ollama provider
+            global llm_config, llm_client
+            os.environ["LLM_PROVIDER"] = "ollama"
+            llm_config = LLMConfig.load_from_env()
+            llm_client = get_llm_client(llm_config)
+            
+            return {
+                "success": True,
+                "message": "API key deleted successfully. Switched to Ollama provider."
+            }
+        else:
+            return {
+                "success": True,
+                "message": "No API key was stored"
+            }
+            
+    except Exception as e:
+        logging.error(f"Error deleting API key: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete API key: {str(e)}")
+
+
+# ============================================================================
+# TENANT ADMINISTRATION ENDPOINTS
+# ============================================================================
+
+@app.post("/api/admin/tenants")
+async def create_new_tenant(request: dict):
+    """
+    Create a new tenant (admin only)
+    
+    Args:
+        request: dict with tenant_id, practice_name, subscription_tier, config
+    
+    Returns:
+        dict: Created tenant information
+    """
+    try:
+        tenant_id = request.get("tenant_id")
+        practice_name = request.get("practice_name")
+        subscription_tier = request.get("subscription_tier", "free")
+        config_data = request.get("config", {})
+        
+        if not tenant_id or not practice_name:
+            raise HTTPException(status_code=400, detail="tenant_id and practice_name are required")
+        
+        # Create tenant in database
+        db_result = create_tenant(
+            tenant_id=tenant_id,
+            practice_name=practice_name,
+            subscription_tier=subscription_tier
+        )
+        
+        if 'error' in db_result:
+            raise HTTPException(status_code=400, detail=db_result['error'])
+        
+        # Create tenant configuration file
+        tenant_config = TenantConfig(
+            tenant_id=tenant_id,
+            practice_name=practice_name,
+            subscription_tier=subscription_tier,
+            **config_data
+        )
+        
+        success = tenant_manager.save_tenant_config(tenant_config)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save tenant configuration")
+        
+        return {
+            "success": True,
+            "message": f"Tenant {tenant_id} created successfully",
+            "tenant": db_result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error creating tenant: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create tenant: {str(e)}")
+
+
+@app.get("/api/admin/tenants")
+async def list_all_tenants():
+    """
+    List all tenants (admin only)
+    
+    Returns:
+        dict: List of all tenants
+    """
+    try:
+        tenants = get_all_tenants()
+        
+        return {
+            "success": True,
+            "tenants": tenants,
+            "count": len(tenants)
+        }
+        
+    except Exception as e:
+        logging.error(f"Error listing tenants: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list tenants")
+
+
+@app.get("/api/admin/tenants/{tenant_id}")
+async def get_tenant_info(tenant_id: str):
+    """
+    Get detailed tenant information (admin only)
+    
+    Args:
+        tenant_id: Tenant identifier
+    
+    Returns:
+        dict: Tenant information with configuration
+    """
+    try:
+        # Get from database
+        db_tenant = get_tenant_by_id(tenant_id)
+        
+        if not db_tenant:
+            raise HTTPException(status_code=404, detail=f"Tenant {tenant_id} not found")
+        
+        # Get configuration
+        tenant_config = tenant_manager.load_tenant_config(tenant_id)
+        
+        return {
+            "success": True,
+            "tenant": db_tenant,
+            "config": tenant_config.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error getting tenant {tenant_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get tenant: {str(e)}")
+
+
+@app.put("/api/admin/tenants/{tenant_id}")
+async def update_tenant_config(tenant_id: str, request: dict):
+    """
+    Update tenant configuration (admin only)
+    
+    Args:
+        tenant_id: Tenant identifier
+        request: dict with updated configuration
+    
+    Returns:
+        dict: Updated tenant information
+    """
+    try:
+        # Load current config
+        tenant_config = tenant_manager.load_tenant_config(tenant_id)
+        
+        # Update configuration fields
+        if "practice_name" in request:
+            tenant_config.practice_name = request["practice_name"]
+        if "logo_url" in request:
+            tenant_config.logo_url = request["logo_url"]
+        if "primary_color" in request:
+            tenant_config.primary_color = request["primary_color"]
+        if "secondary_color" in request:
+            tenant_config.secondary_color = request["secondary_color"]
+        if "features_enabled" in request:
+            tenant_config.features_enabled = request["features_enabled"]
+        if "dentrix_bridge_url" in request:
+            tenant_config.dentrix_bridge_url = request["dentrix_bridge_url"]
+        if "llm_provider" in request:
+            tenant_config.llm_provider = request["llm_provider"]
+        if "whisper_model" in request:
+            tenant_config.whisper_model = request["whisper_model"]
+        if "subscription_tier" in request:
+            tenant_config.subscription_tier = request["subscription_tier"]
+        
+        # Save configuration
+        success = tenant_manager.save_tenant_config(tenant_config)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save tenant configuration")
+        
+        # Update database
+        db_update = {}
+        if "practice_name" in request:
+            db_update["practice_name"] = request["practice_name"]
+        if "subscription_tier" in request:
+            db_update["subscription_tier"] = request["subscription_tier"]
+        
+        if db_update:
+            update_tenant(tenant_id, **db_update)
+        
+        return {
+            "success": True,
+            "message": f"Tenant {tenant_id} updated successfully",
+            "config": tenant_config.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error updating tenant {tenant_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update tenant: {str(e)}")
+
+
+@app.delete("/api/admin/tenants/{tenant_id}")
+async def delete_tenant_endpoint(tenant_id: str, hard_delete: bool = False):
+    """
+    Delete tenant (admin only)
+    
+    Args:
+        tenant_id: Tenant identifier
+        hard_delete: If True, permanently delete; else soft delete
+    
+    Returns:
+        dict: Deletion status
+    """
+    try:
+        # Delete from database
+        result = delete_tenant(tenant_id, hard_delete=hard_delete)
+        
+        if 'error' in result:
+            raise HTTPException(status_code=404, detail=result['error'])
+        
+        # Delete configuration file if hard delete
+        if hard_delete:
+            tenant_manager.delete_tenant_config(tenant_id)
+        
+        return {
+            "success": True,
+            "message": f"Tenant {tenant_id} {'permanently deleted' if hard_delete else 'deactivated'}"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error deleting tenant {tenant_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete tenant: {str(e)}")
+
+
+# ============================================================================
+# EXPORT ENDPOINTS
+# ============================================================================
+
+@app.get("/api/sessions/{session_id}/export/pdf")
+async def export_session_pdf(session_id: str):
+    """
+    Export session as PDF document
+    
+    Args:
+        session_id: Session identifier
+        
+    Returns:
+        StreamingResponse: PDF file download
+    """
+    try:
+        pdf_bytes = export_service.export_session_to_pdf(session_id)
+        
+        # Get session date for filename
+        from database import get_session_by_id as get_sess
+        session = get_sess(session_id)
+        date_str = session.get('timestamp', datetime.now()).strftime('%Y%m%d') if session else datetime.now().strftime('%Y%m%d')
+        
+        filename = f"session_{session_id}_{date_str}.pdf"
+        
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logging.error(f"Error exporting PDF for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to export PDF")
+
+
+@app.get("/api/sessions/{session_id}/export/docx")
+async def export_session_docx(session_id: str):
+    """
+    Export session as Word document
+    
+    Args:
+        session_id: Session identifier
+        
+    Returns:
+        StreamingResponse: DOCX file download
+    """
+    try:
+        docx_bytes = export_service.export_session_to_docx(session_id)
+        
+        # Get session date for filename
+        from database import get_session_by_id as get_sess
+        session = get_sess(session_id)
+        date_str = session.get('timestamp', datetime.now()).strftime('%Y%m%d') if session else datetime.now().strftime('%Y%m%d')
+        
+        filename = f"session_{session_id}_{date_str}.docx"
+        
+        return StreamingResponse(
+            io.BytesIO(docx_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logging.error(f"Error exporting DOCX for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to export DOCX")
+
+
+@app.get("/api/sessions/export/csv")
+async def export_sessions_csv(
+    provider_id: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None)
+):
+    """
+    Export multiple sessions as CSV
+    
+    Args:
+        provider_id: Filter by provider ID (optional)
+        start_date: Start date filter in ISO format (optional)
+        end_date: End date filter in ISO format (optional)
+        
+    Returns:
+        StreamingResponse: CSV file download
+    """
+    try:
+        # Parse dates if provided
+        start_dt = datetime.fromisoformat(start_date) if start_date else None
+        end_dt = datetime.fromisoformat(end_date) if end_date else None
+        
+        csv_content = export_service.export_sessions_to_csv(
+            provider_id=provider_id,
+            start_date=start_dt,
+            end_date=end_dt
+        )
+        
+        # Generate filename
+        date_str = datetime.now().strftime('%Y%m%d')
+        filename = f"sessions_export_{date_str}.csv"
+        
+        return StreamingResponse(
+            io.StringIO(csv_content),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        logging.error(f"Error exporting sessions CSV: {e}")
+        raise HTTPException(status_code=500, detail="Failed to export CSV")
+
+
+@app.get("/api/voice-profiles/{provider_name}/export")
+async def export_voice_profile(provider_name: str):
+    """
+    Export voice profile as ZIP file
+    
+    Args:
+        provider_name: Provider name
+        
+    Returns:
+        StreamingResponse: ZIP file download
+    """
+    try:
+        zip_bytes = export_service.export_voice_profile(provider_name)
+        
+        safe_name = provider_name.lower().replace(' ', '_')
+        filename = f"voice_profile_{safe_name}.zip"
+        
+        return StreamingResponse(
+            io.BytesIO(zip_bytes),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logging.error(f"Error exporting voice profile for {provider_name}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to export voice profile")
+
+
+# ============================================================================
+# IMPORT ENDPOINTS
+# ============================================================================
+
+@app.post("/api/voice-profiles/{provider_name}/import")
+async def import_voice_profile(provider_name: str, file: UploadFile = File(...)):
+    """
+    Import voice profile from ZIP file
+    
+    Args:
+        provider_name: Provider name
+        file: ZIP file upload
+        
+    Returns:
+        dict: Success message
+    """
+    try:
+        # Validate file type
+        if not file.filename.endswith('.zip'):
+            raise HTTPException(status_code=400, detail="File must be a ZIP archive")
+        
+        # Read file content
+        zip_bytes = await file.read()
+        
+        # Validate ZIP structure
+        validation = import_service.validate_voice_profile_zip(zip_bytes)
+        if not validation['valid']:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid voice profile ZIP: {', '.join(validation['errors'])}"
+            )
+        
+        # Import voice profile
+        success = import_service.import_voice_profile(provider_name, zip_bytes)
+        
+        if success:
+            return {
+                "success": True,
+                "message": f"Voice profile imported successfully for {provider_name}",
+                "details": {
+                    "has_metadata": validation['has_metadata'],
+                    "sample_count": validation['sample_count']
+                }
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to import voice profile")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error importing voice profile for {provider_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to import voice profile: {str(e)}")
+
+
+@app.post("/api/providers/import/csv")
+async def import_providers_csv(file: UploadFile = File(...)):
+    """
+    Import providers from CSV file
+    
+    Args:
+        file: CSV file upload
+        
+    Returns:
+        dict: Import results
+    """
+    try:
+        # Validate file type
+        if not file.filename.endswith('.csv'):
+            raise HTTPException(status_code=400, detail="File must be a CSV file")
+        
+        # Read file content
+        csv_content = await file.read()
+        csv_data = csv_content.decode('utf-8')
+        
+        # Import providers
+        result = import_service.import_providers_csv(csv_data)
+        
+        return {
+            "success": True,
+            "message": f"Import complete: {result['created']} created, {result['failed']} failed",
+            "results": result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error importing providers CSV: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to import providers: {str(e)}")
+
+
+@app.post("/api/templates/import")
+async def import_soap_templates(file: UploadFile = File(...)):
+    """
+    Import SOAP templates from JSON file
+    
+    Args:
+        file: JSON file upload
+        
+    Returns:
+        dict: Success message
+    """
+    try:
+        # Validate file type
+        if not file.filename.endswith('.json'):
+            raise HTTPException(status_code=400, detail="File must be a JSON file")
+        
+        # Read and parse file content
+        json_content = await file.read()
+        json_data = json.loads(json_content.decode('utf-8'))
+        
+        # Import templates
+        success = import_service.import_soap_templates(json_data)
+        
+        if success:
+            return {
+                "success": True,
+                "message": "SOAP templates imported successfully"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to import templates")
+            
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON file")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error importing SOAP templates: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to import templates: {str(e)}")
+
+
+# ============================================================================
+# DENTRIX INTEGRATION ENDPOINTS
+# ============================================================================
+
+@app.get("/api/dentrix/health")
+async def check_dentrix_health():
+    """
+    Check Dentrix bridge connectivity and health status
+    
+    Returns:
+        dict: Health status with bridge availability
+    """
+    try:
+        dentrix_client = get_dentrix_client()
+        is_healthy = dentrix_client.health_check()
+        
+        return {
+            "success": True,
+            "dentrix_available": is_healthy,
+            "bridge_url": dentrix_client.bridge_url,
+            "message": "Dentrix bridge is healthy" if is_healthy else "Dentrix bridge is not responding"
+        }
+    except Exception as e:
+        logging.error(f"Dentrix health check error: {e}")
+        return {
+            "success": False,
+            "dentrix_available": False,
+            "error": str(e)
+        }
+
+
+@app.get("/api/dentrix/patients/search")
+async def search_dentrix_patients(query: str):
+    """
+    Search for patients in Dentrix by name or chart number
+    
+    Args:
+        query: Patient name or chart number to search
+        
+    Returns:
+        list: Matching patient records from Dentrix
+    """
+    try:
+        if not query or len(query.strip()) < 2:
+            raise HTTPException(
+                status_code=400, 
+                detail="Search query must be at least 2 characters"
+            )
+        
+        dentrix_client = get_dentrix_client()
+        patients = dentrix_client.search_patients(query)
+        
+        logging.info(f"Dentrix patient search: '{query}' - Found {len(patients)} results")
+        
+        return {
+            "success": True,
+            "count": len(patients),
+            "patients": patients
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Dentrix patient search error: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to search Dentrix patients: {str(e)}"
+        )
+
+
+@app.get("/api/dentrix/patients/{patient_id}")
+async def get_dentrix_patient(patient_id: str):
+    """
+    Get full patient details from Dentrix including demographics and insurance
+    
+    Args:
+        patient_id: Dentrix patient ID
+        
+    Returns:
+        dict: Complete patient information
+    """
+    try:
+        dentrix_client = get_dentrix_client()
+        patient = dentrix_client.get_patient(patient_id)
+        
+        logging.info(f"Retrieved Dentrix patient: ID {patient_id}")
+        
+        return {
+            "success": True,
+            "patient": patient
+        }
+    except Exception as e:
+        logging.error(f"Get Dentrix patient error: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to get Dentrix patient: {str(e)}"
+        )
+
+
+class DentrixSoapRequest(BaseModel):
+    """Request model for sending SOAP note to Dentrix"""
+    patient_id: int
+    provider_id: int
+    note_type: str = "SOAP"
+    note_date: Optional[str] = None
+    appointment_id: Optional[int] = None
+
+
+@app.post("/api/sessions/{session_id}/send-to-dentrix")
+async def send_session_to_dentrix(session_id: str, request: DentrixSoapRequest):
+    """
+    Send session SOAP note to Dentrix and update session record
+    
+    Args:
+        session_id: Session ID containing SOAP note
+        request: Dentrix patient and provider information
+        
+    Returns:
+        dict: Success status with Dentrix note ID
+    """
+    try:
+        # Get session from database
+        session = get_session_by_id(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Check if SOAP note exists
+        if not session.get('soap_note'):
+            raise HTTPException(
+                status_code=400, 
+                detail="No SOAP note found for this session"
+            )
+        
+        # Check if already sent to Dentrix
+        if session.get('sent_to_dentrix'):
+            logging.warning(f"Session {session_id} already sent to Dentrix")
+            return {
+                "success": True,
+                "already_sent": True,
+                "message": "This SOAP note was already sent to Dentrix",
+                "dentrix_note_id": session.get('dentrix_note_id'),
+                "sent_at": session.get('dentrix_sent_at')
+            }
+        
+        # Send SOAP note to Dentrix
+        dentrix_client = get_dentrix_client()
+        result = dentrix_client.create_soap_note(
+            patient_id=request.patient_id,
+            provider_id=request.provider_id,
+            soap_note=session['soap_note'],
+            note_type=request.note_type,
+            note_date=request.note_date,
+            appointment_id=request.appointment_id
+        )
+        
+        if not result.get('success'):
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Dentrix rejected SOAP note: {result.get('message', 'Unknown error')}"
+            )
+        
+        # Update session with Dentrix information
+        from database import update_session_dentrix_status
+        update_session_dentrix_status(
+            session_id=session_id,
+            dentrix_note_id=result.get('note_id'),
+            dentrix_patient_id=str(request.patient_id),
+            sent_to_dentrix=True
+        )
+        
+        logging.info(
+            f"✅ Session {session_id} sent to Dentrix: "
+            f"Patient {request.patient_id}, Note ID {result.get('note_id')}"
+        )
+        
+        return {
+            "success": True,
+            "dentrix_note_id": result.get('note_id'),
+            "message": "SOAP note successfully sent to Dentrix",
+            "timestamp": result.get('timestamp')
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Send to Dentrix error: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to send SOAP note to Dentrix: {str(e)}"
+        )
+
+
+@app.get("/api/dentrix/providers")
+async def get_dentrix_providers():
+    """
+    Get list of all providers from Dentrix
+    
+    Returns:
+        list: All providers with credentials and specialties
+    """
+    try:
+        dentrix_client = get_dentrix_client()
+        providers = dentrix_client.get_providers()
+        
+        logging.info(f"Retrieved {len(providers)} providers from Dentrix")
+        
+        return {
+            "success": True,
+            "count": len(providers),
+            "providers": providers
+        }
+    except Exception as e:
+        logging.error(f"Get Dentrix providers error: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to get Dentrix providers: {str(e)}"
+        )
+
+
+# ============================================================================
+# END DENTRIX INTEGRATION
+# ============================================================================
 
 # Initialize default configurations on startup - DISABLED FOR NOW
 # try:

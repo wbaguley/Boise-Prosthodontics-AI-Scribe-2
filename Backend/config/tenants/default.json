@@ -1,0 +1,21 @@
+{
+  "tenant_id": "default",
+  "practice_name": "Dental Practice",
+  "logo_url": "",
+  "primary_color": "#3B82F6",
+  "secondary_color": "#8B5CF6",
+  "features_enabled": {
+    "ambient_scribe": true,
+    "dentrix_integration": true,
+    "voice_profiles": true,
+    "openai_option": true,
+    "email_system": true,
+    "soap_templates": true
+  },
+  "dentrix_bridge_url": "http://dentrix_bridge:8001",
+  "llm_provider": "ollama",
+  "whisper_model": "medium",
+  "subscription_tier": "free",
+  "is_active": true,
+  "created_at": "2025-11-03T19:57:09.096474"
+}

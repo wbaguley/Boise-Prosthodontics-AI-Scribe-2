@@ -61,7 +61,7 @@ services:
     environment:
       - OLLAMA_HOST=http://ollama:11434
       - MISTRAL_HOST=http://mistral:11434
-      - WHISPER_MODEL=tiny
+      - WHISPER_MODEL=medium
       - PYTHONUNBUFFERED=1
       - HF_TOKEN=${HF_TOKEN}
     env_file:

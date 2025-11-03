@@ -8,11 +8,19 @@ const SystemConfig = () => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  
+  // LLM Provider state
+  const [llmProvider, setLlmProvider] = useState('ollama');
+  const [openaiApiKey, setOpenaiApiKey] = useState('');
+  const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini');
+  const [ollamaModel, setOllamaModel] = useState('llama3.1:8b');
+  const [savingLlm, setSavingLlm] = useState(false);
 
   useEffect(() => {
     loadConfigs();
     loadTimezones();
     loadCurrentTimezone();
+    loadLlmConfig();
   }, []);
 
   const loadConfigs = async () => {
@@ -50,6 +58,56 @@ const SystemConfig = () => {
     } catch (err) {
       console.error('Error loading current timezone:', err);
       setLoading(false);
+    }
+  };
+
+  const loadLlmConfig = async () => {
+    try {
+      const response = await fetch('/api/llm/config');
+      const data = await response.json();
+      if (data.success) {
+        setLlmProvider(data.llm_provider || 'ollama');
+        setOllamaModel(data.model || 'llama3.1:8b');
+        setOpenaiModel(data.model || 'gpt-4o-mini');
+      }
+    } catch (err) {
+      console.error('Error loading LLM config:', err);
+    }
+  };
+
+  const handleSaveLlmConfig = async () => {
+    setSavingLlm(true);
+    setError('');
+    setMessage('');
+    
+    try {
+      const config = {
+        provider: llmProvider,
+        openai_api_key: llmProvider === 'openai' ? openaiApiKey : undefined,
+        openai_model: llmProvider === 'openai' ? openaiModel : undefined,
+        ollama_model: llmProvider === 'ollama' ? ollamaModel : undefined,
+      };
+
+      const response = await fetch('/api/llm/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(config),
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setMessage('LLM configuration updated successfully! Backend will restart to apply changes.');
+        setTimeout(() => setMessage(''), 5000);
+        loadLlmConfig();
+      } else {
+        setError(data.detail || 'Failed to update LLM configuration');
+      }
+    } catch (err) {
+      setError('Error updating LLM configuration: ' + err.message);
+    } finally {
+      setSavingLlm(false);
     }
   };
 

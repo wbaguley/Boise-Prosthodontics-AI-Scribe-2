@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import VoiceProfile from './Voiceprofile';
 import SimpleTemplateEditor from './SimpleTemplateEditor';
+import Settings from './Settings';
 
 const API_URL = process.env.REACT_APP_API_URL || '';
 
@@ -13,6 +14,7 @@ const Dashboard = ({ onNavigate }) => {
     voice_profiles: 'checking'
   });
   const [showSettings, setShowSettings] = useState(false);
+  const [showLLMSettings, setShowLLMSettings] = useState(false);
   
   // Settings state
   const [newProviderName, setNewProviderName] = useState('');
@@ -1123,7 +1125,11 @@ const Dashboard = ({ onNavigate }) => {
                 </div>
 
                 {/* LLM Configuration */}
-                <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6">
+                <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
+                     onClick={() => {
+                       setShowSettings(false);
+                       setShowLLMSettings(true);
+                     }}>
                   <div className="text-center">
                     <div className="text-4xl mb-4">🧠</div>
                     <h4 className="font-semibold text-lg text-gray-800">LLM Configuration</h4>
@@ -2625,6 +2631,24 @@ const Dashboard = ({ onNavigate }) => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* LLM Settings Modal */}
+      {showLLMSettings && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+              <h3 className="text-2xl font-semibold">LLM Provider Settings</h3>
+              <button
+                onClick={() => setShowLLMSettings(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <Settings />
           </div>
         </div>
       )}

@@ -1898,7 +1898,12 @@ const Dashboard = ({ onNavigate }) => {
                     <div className="flex justify-between items-center mb-3">
                       <h4 className="font-medium text-sm text-gray-700">Recent Conversations</h4>
                       <button
-                        onClick={() => {
+                        onClick={async () => {
+                          // Save current conversation if it exists
+                          if (trainingMessages.length > 0) {
+                            await saveTrainingConversation();
+                          }
+                          // Clear for new chat
                           setTrainingMessages([]);
                           setCurrentConversationId(null);
                           setConversationTitle('');
@@ -1909,13 +1914,7 @@ const Dashboard = ({ onNavigate }) => {
                       </button>
                     </div>
                     <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {console.log('All AI Memories:', aiMemories)}
-                      {aiMemories.length > 0 && console.log('First memory structure:', JSON.stringify(aiMemories[0], null, 2))}
-                      {console.log('Filtered Chat Conversations:', aiMemories.filter(memory => {
-                        console.log('Checking memory:', memory.title, 'Category:', memory.category);
-                        return memory.category === 'Chat Conversations';
-                      }))}
-                      {aiMemories
+                      {knowledgeArticles
                         .filter(memory => memory.category === 'Chat Conversations')
                         .slice(0, 10)
                         .map(conversation => (
@@ -1932,11 +1931,11 @@ const Dashboard = ({ onNavigate }) => {
                               {conversation.title}
                             </div>
                             <div className="text-xs text-gray-500">
-                              {conversation.addedDate || 'Recently'}
+                              {new Date(conversation.created_at).toLocaleDateString() || 'Recently'}
                             </div>
                           </button>
                         ))}
-                      {aiMemories.filter(memory => memory.category === 'Chat Conversations').length === 0 && (
+                      {knowledgeArticles.filter(memory => memory.category === 'Chat Conversations').length === 0 && (
                         <div className="text-sm text-gray-500 text-center py-4">
                           No conversations yet. Start chatting to create your first conversation!
                         </div>

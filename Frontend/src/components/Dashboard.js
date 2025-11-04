@@ -984,7 +984,7 @@ const Dashboard = ({ onNavigate }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Boise Prosthodontics AI Scribe</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Prosthodontic AI Scribe</h1>
               <p className="text-sm text-gray-600 mt-1">Dashboard</p>
             </div>
             {/* Mobile Layout - Centered buttons stacked vertically */}

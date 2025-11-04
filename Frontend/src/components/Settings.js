@@ -310,10 +310,31 @@ const Settings = ({ onSave }) => {
                         onChange={(e) => setOpenaiModel(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                       >
-                        <option value="gpt-4o-mini">GPT-4o Mini (Recommended - Fast & Cheap)</option>
-                        <option value="gpt-4o">GPT-4o (Balanced)</option>
-                        <option value="gpt-4-turbo">GPT-4 Turbo (Most Powerful)</option>
+                        <optgroup label="GPT-4o Series (Latest - Best for Medical)">
+                          <option value="gpt-4o-mini">GPT-4o Mini (Recommended - Fast & Cheap)</option>
+                          <option value="gpt-4o">GPT-4o (Balanced)</option>
+                        </optgroup>
+                        <optgroup label="GPT-4 Turbo Series (Most Powerful)">
+                          <option value="gpt-4-turbo">GPT-4 Turbo (Most Powerful)</option>
+                          <option value="gpt-4-turbo-preview">GPT-4 Turbo Preview</option>
+                        </optgroup>
+                        <optgroup label="GPT-4 Series (Legacy)">
+                          <option value="gpt-4">GPT-4 (Original)</option>
+                          <option value="gpt-4-0613">GPT-4 (June 2023)</option>
+                        </optgroup>
+                        <optgroup label="GPT-3.5 Series (Budget Option)">
+                          <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Cheapest)</option>
+                          <option value="gpt-3.5-turbo-16k">GPT-3.5 Turbo 16K (Longer context)</option>
+                        </optgroup>
                       </select>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {openaiModel === 'gpt-4o-mini' && '~$0.15 per 1M input tokens, $0.60 per 1M output tokens'}
+                        {openaiModel === 'gpt-4o' && '~$5.00 per 1M input tokens, $15.00 per 1M output tokens'}
+                        {openaiModel === 'gpt-4-turbo' && '~$10.00 per 1M input tokens, $30.00 per 1M output tokens'}
+                        {openaiModel === 'gpt-4' && '~$30.00 per 1M input tokens, $60.00 per 1M output tokens'}
+                        {openaiModel === 'gpt-3.5-turbo' && '~$0.50 per 1M input tokens, $1.50 per 1M output tokens'}
+                        {!['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'].includes(openaiModel) && 'Pricing varies by model'}
+                      </p>
                     </div>
                   </div>
                 )}

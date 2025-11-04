@@ -1909,6 +1909,12 @@ const Dashboard = ({ onNavigate }) => {
                       </button>
                     </div>
                     <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {console.log('All AI Memories:', aiMemories)}
+                      {aiMemories.length > 0 && console.log('First memory structure:', JSON.stringify(aiMemories[0], null, 2))}
+                      {console.log('Filtered Chat Conversations:', aiMemories.filter(memory => {
+                        console.log('Checking memory:', memory.title, 'Category:', memory.category);
+                        return memory.category === 'Chat Conversations';
+                      }))}
                       {aiMemories
                         .filter(memory => memory.category === 'Chat Conversations')
                         .slice(0, 10)
@@ -1930,6 +1936,11 @@ const Dashboard = ({ onNavigate }) => {
                             </div>
                           </button>
                         ))}
+                      {aiMemories.filter(memory => memory.category === 'Chat Conversations').length === 0 && (
+                        <div className="text-sm text-gray-500 text-center py-4">
+                          No conversations yet. Start chatting to create your first conversation!
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2675,6 +2686,18 @@ const Dashboard = ({ onNavigate }) => {
                         </div>
                       </div>
                       <div className="flex gap-2 ml-4">
+                        {memory.category === 'Chat Conversations' && (
+                          <button
+                            onClick={() => {
+                              loadConversation(memory);
+                              setShowAllMemories(false);
+                              setShowAITraining(true);
+                            }}
+                            className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 text-sm whitespace-nowrap"
+                          >
+                            💬 Continue Chat
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setEditingMemory(memory);

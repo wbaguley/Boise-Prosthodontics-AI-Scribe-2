@@ -1046,46 +1046,6 @@ const Dashboard = ({ onNavigate }) => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        {/* System Status Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-600">Whisper Status</h3>
-              <div className={`w-3 h-3 rounded-full ${getStatusColor(systemStatus.whisper)}`}></div>
-            </div>
-            <p className="text-lg sm:text-2xl font-bold text-gray-800">{getStatusText(systemStatus.whisper)}</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-600">Ollama (AI)</h3>
-              <div className={`w-3 h-3 rounded-full ${getStatusColor(systemStatus.ollama)}`}></div>
-            </div>
-            <p className="text-lg sm:text-2xl font-bold text-gray-800">{getStatusText(systemStatus.ollama)}</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-600">Voice Profiles</h3>
-              <div className={`w-3 h-3 rounded-full ${getStatusColor(systemStatus.voice_profiles)}`}></div>
-            </div>
-            <p className="text-lg sm:text-2xl font-bold text-gray-800">{providers.filter(p => p.has_voice_profile).length}/{providers.length}</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-600">Current AI Model</h3>
-              <div className={`w-3 h-3 rounded-full ${getStatusColor(systemStatus.ollama)}`}></div>
-            </div>
-            <p className="text-lg sm:text-2xl font-bold text-gray-800">
-              {currentLLM === 'llama3.1' ? 'Llama 3.1 8B' : 
-               currentLLM === 'codellama' ? 'Code Llama 13B' : 
-               currentLLM === 'mixtral' ? 'Mixtral 8x7B' : 
-               currentLLM === 'meditron' ? 'Meditron 7B' : currentLLM}
-            </p>
-          </div>
-        </div>
-
         {/* Main Content Grid */}
         <div className="grid lg:grid-cols-1 gap-8">
           {/* Recent Sessions - Full Width */}

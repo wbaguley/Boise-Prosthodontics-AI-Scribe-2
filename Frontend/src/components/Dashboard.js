@@ -115,6 +115,8 @@ const Dashboard = ({ onNavigate }) => {
   const [trainingMessages, setTrainingMessages] = useState([]);
   const [trainingInput, setTrainingInput] = useState('');
   const [isTrainingSending, setIsTrainingSending] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState(null);
+  const [conversationTitle, setConversationTitle] = useState('');
 
   // File upload reference
   const fileInputRef = useRef(null);
@@ -158,11 +160,96 @@ const Dashboard = ({ onNavigate }) => {
       
       const data = await response.json();
       setTrainingMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+      
+      // Auto-save after each exchange if continuing a conversation
+      if (currentConversationId) {
+        setTimeout(() => saveTrainingConversation(), 1000);
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       alert('Failed to send message. Please try again.');
     } finally {
       setIsTrainingSending(false);
+    }
+  };
+
+  const saveTrainingConversation = async () => {
+    if (trainingMessages.length === 0) return;
+    
+    try {
+      // Create a title from the first user message
+      const firstUserMsg = trainingMessages.find(m => m.role === 'user');
+      const title = conversationTitle || (firstUserMsg 
+        ? `Chat: ${firstUserMsg.content.substring(0, 50)}${firstUserMsg.content.length > 50 ? '...' : ''}`
+        : 'Chat Session - Untitled');
+      
+      // Format conversation as readable text
+      const conversationText = trainingMessages.map(msg => 
+        `**${msg.role === 'user' ? 'You' : 'AI Model'}:**\n${msg.content}`
+      ).join('\n\n---\n\n');
+      
+      const url = currentConversationId 
+        ? `${API_URL}/api/knowledge-articles/${currentConversationId}`
+        : `${API_URL}/api/knowledge-articles`;
+
+      const method = currentConversationId ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title,
+          content: conversationText,
+          category: 'Chat Conversations'
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Conversation saved:', data);
+        // Refresh AI memories list
+        fetchKnowledgeArticles();
+      }
+    } catch (error) {
+      console.error('Error saving conversation:', error);
+    }
+  };
+
+  const loadConversation = async (conversation) => {
+    try {
+      const response = await fetch(`${API_URL}/api/knowledge-articles/${conversation.id}`);
+      if (!response.ok) throw new Error('Failed to load conversation');
+      
+      const data = await response.json();
+      
+      // Parse the conversation text back into messages
+      const content = data.content || '';
+      const messages = [];
+      
+      // Split by separator
+      const parts = content.split('---');
+      
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+        
+        // Extract role and content
+        if (trimmed.startsWith('**You:**')) {
+          const content = trimmed.replace('**You:**', '').trim();
+          messages.push({ role: 'user', content });
+        } else if (trimmed.startsWith('**AI Model:**')) {
+          const content = trimmed.replace('**AI Model:**', '').trim();
+          messages.push({ role: 'assistant', content });
+        }
+      }
+      
+      setTrainingMessages(messages);
+      setCurrentConversationId(conversation.id);
+      setConversationTitle(conversation.title);
+      
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+      alert('Failed to load conversation. Please try again.');
     }
   };
 
@@ -1629,7 +1716,15 @@ const Dashboard = ({ onNavigate }) => {
               <div className="flex justify-between items-center">
                 <h3 className="text-xl lg:text-2xl font-semibold">AI Model Training</h3>
                 <button
-                  onClick={() => setShowAITraining(false)}
+                  onClick={async () => {
+                    await saveTrainingConversation();
+                    setShowAITraining(false);
+                    // Clear chat for next session
+                    setTrainingMessages([]);
+                    setTrainingInput('');
+                    setCurrentConversationId(null);
+                    setConversationTitle('');
+                  }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
                   ×
@@ -1644,6 +1739,29 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="p-3 lg:p-4 bg-gray-50 border-b">
                   <h4 className="font-semibold">Chat with AI Model</h4>
                   <p className="text-sm text-gray-600">Train and interact with the AI to improve its responses</p>
+                  {currentConversationId && (
+                    <div className="mt-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-purple-600 font-medium">Continuing:</span>
+                          <span className="text-sm text-gray-700">{conversationTitle}</span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (window.confirm('Start a new conversation? Current chat will be saved.')) {
+                              saveTrainingConversation();
+                              setTrainingMessages([]);
+                              setCurrentConversationId(null);
+                              setConversationTitle('');
+                            }
+                          }}
+                          className="text-xs text-purple-600 hover:text-purple-700 underline"
+                        >
+                          New Chat
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex-1 overflow-y-auto p-3 lg:p-4 space-y-4">
@@ -1769,6 +1887,46 @@ const Dashboard = ({ onNavigate }) => {
                           <div className="text-gray-600 text-xs">Added {memory.addedDate}</div>
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Conversation History */}
+                  <div className="mt-6">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="font-medium text-sm text-gray-700">Recent Conversations</h4>
+                      <button
+                        onClick={() => {
+                          setTrainingMessages([]);
+                          setCurrentConversationId(null);
+                          setConversationTitle('');
+                        }}
+                        className="text-xs text-purple-600 hover:text-purple-700"
+                      >
+                        + New Chat
+                      </button>
+                    </div>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {aiMemories
+                        .filter(memory => memory.category === 'Chat Conversations')
+                        .slice(0, 10)
+                        .map(conversation => (
+                          <button
+                            key={conversation.id}
+                            onClick={() => loadConversation(conversation)}
+                            className={`w-full text-left p-2 rounded hover:bg-gray-50 border ${
+                              currentConversationId === conversation.id 
+                                ? 'border-purple-500 bg-purple-50' 
+                                : 'border-gray-200'
+                            }`}
+                          >
+                            <div className="text-sm font-medium text-gray-900 truncate">
+                              {conversation.title}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {conversation.addedDate || 'Recently'}
+                            </div>
+                          </button>
+                        ))}
                     </div>
                   </div>
                 </div>

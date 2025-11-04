@@ -11,6 +11,9 @@ RUN npm install
 # Copy application files
 COPY . .
 
+# Copy environment file
+COPY .env .env
+
 EXPOSE 3000
 
 # Health check

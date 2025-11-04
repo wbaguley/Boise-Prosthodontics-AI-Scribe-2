@@ -110,9 +110,54 @@ HF_TOKEN = os.getenv('HF_TOKEN', '')
 # LLM Configuration Dictionary
 LLM_CONFIGS = {
     "llama": {
-        "name": "Llama 3",
-        "model": "llama3",
+        "name": "Llama 3.1 8B",
+        "model": "llama3.1:8b",
         "host": OLLAMA_HOST
+    },
+    "codellama": {
+        "name": "Code Llama 13B",
+        "model": "codellama:13b",
+        "host": OLLAMA_HOST
+    },
+    "mixtral": {
+        "name": "Mixtral 8x7B",
+        "model": "mixtral:8x7b",
+        "host": OLLAMA_HOST
+    },
+    "meditron": {
+        "name": "Meditron 7B (Medical)",
+        "model": "meditron:7b",
+        "host": OLLAMA_HOST
+    },
+    "gpt4o-mini": {
+        "name": "GPT-4o Mini (Recommended - Fast & Cheap)",
+        "model": "gpt-4o-mini",
+        "host": "https://api.openai.com/v1",
+        "api_key_required": True
+    },
+    "gpt4o": {
+        "name": "GPT-4o (Balanced)",
+        "model": "gpt-4o",
+        "host": "https://api.openai.com/v1",
+        "api_key_required": True
+    },
+    "gpt4-turbo": {
+        "name": "GPT-4 Turbo (Most Powerful)",
+        "model": "gpt-4-turbo",
+        "host": "https://api.openai.com/v1",
+        "api_key_required": True
+    },
+    "gpt4": {
+        "name": "GPT-4 (Original)",
+        "model": "gpt-4",
+        "host": "https://api.openai.com/v1",
+        "api_key_required": True
+    },
+    "gpt35-turbo": {
+        "name": "GPT-3.5 Turbo (Cheapest)",
+        "model": "gpt-3.5-turbo",
+        "host": "https://api.openai.com/v1",
+        "api_key_required": True
     }
 }
 

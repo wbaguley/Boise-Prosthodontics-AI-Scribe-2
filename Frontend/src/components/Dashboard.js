@@ -111,6 +111,11 @@ const Dashboard = ({ onNavigate }) => {
     'meditron': false 
   });
 
+  // AI Model Training chat state
+  const [trainingMessages, setTrainingMessages] = useState([]);
+  const [trainingInput, setTrainingInput] = useState('');
+  const [isTrainingSending, setIsTrainingSending] = useState(false);
+
   // File upload reference
   const fileInputRef = useRef(null);
 
@@ -131,6 +136,34 @@ const Dashboard = ({ onNavigate }) => {
     });
     // Reset the input
     event.target.value = '';
+  };
+
+  const handleSendTrainingMessage = async () => {
+    if (!trainingInput.trim() || isTrainingSending) return;
+    
+    const userMessage = { role: 'user', content: trainingInput };
+    const messageToSend = trainingInput;
+    setTrainingMessages(prev => [...prev, userMessage]);
+    setTrainingInput('');
+    setIsTrainingSending(true);
+    
+    try {
+      const response = await fetch(`${API_URL}/api/ai-training/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: messageToSend
+        })
+      });
+      
+      const data = await response.json();
+      setTrainingMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      alert('Failed to send message. Please try again.');
+    } finally {
+      setIsTrainingSending(false);
+    }
   };
 
   const getFileIcon = (fileName) => {
@@ -1614,21 +1647,37 @@ const Dashboard = ({ onNavigate }) => {
                 </div>
                 
                 <div className="flex-1 overflow-y-auto p-3 lg:p-4 space-y-4">
-                  <div className="bg-blue-50 rounded-lg p-3">
-                    <div className="font-medium text-sm text-blue-800">AI Model</div>
-                    <div className="mt-1">Hello! I'm ready to learn. You can ask me questions about prosthodontics or provide training examples.</div>
-                  </div>
+                  {trainingMessages.length === 0 ? (
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <div className="font-medium text-sm text-blue-800">AI Model</div>
+                      <div className="mt-1">Hello! I'm ready to learn. You can ask me questions about prosthodontics or provide training examples.</div>
+                    </div>
+                  ) : (
+                    trainingMessages.map((msg, idx) => (
+                      <div key={idx} className={`rounded-lg p-3 ${msg.role === 'user' ? 'bg-gray-100 ml-8' : 'bg-blue-50 mr-8'}`}>
+                        <div className="font-medium text-sm text-gray-800">{msg.role === 'user' ? 'You' : 'AI Model'}</div>
+                        <div className="mt-1 whitespace-pre-wrap">{msg.content}</div>
+                      </div>
+                    ))
+                  )}
                 </div>
                 
                 <div className="p-3 lg:p-4 border-t">
                   <div className="flex gap-2">
                     <input
                       type="text"
+                      value={trainingInput}
+                      onChange={(e) => setTrainingInput(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSendTrainingMessage()}
                       placeholder="Type your message to train the AI..."
                       className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                     />
-                    <button className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600">
-                      Send
+                    <button 
+                      onClick={handleSendTrainingMessage}
+                      disabled={isTrainingSending || !trainingInput.trim()}
+                      className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isTrainingSending ? 'Sending...' : 'Send'}
                     </button>
                   </div>
                 </div>

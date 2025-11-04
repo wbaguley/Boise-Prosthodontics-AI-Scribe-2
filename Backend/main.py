@@ -49,10 +49,43 @@ def now_in_system_timezone():
     return datetime.now()
 
 def get_available_timezones():
-    return [{"name": "America/Denver", "display_name": "Mountain Time", "current_time": "12:00"}]
+    """Get list of US timezones with current time"""
+    from datetime import datetime
+    import pytz
+    
+    us_timezones = [
+        {"name": "America/New_York", "display_name": "Eastern Time (ET)"},
+        {"name": "America/Chicago", "display_name": "Central Time (CT)"},
+        {"name": "America/Denver", "display_name": "Mountain Time (MT)"},
+        {"name": "America/Phoenix", "display_name": "Mountain Time - Arizona (No DST)"},
+        {"name": "America/Los_Angeles", "display_name": "Pacific Time (PT)"},
+        {"name": "America/Anchorage", "display_name": "Alaska Time (AKT)"},
+        {"name": "Pacific/Honolulu", "display_name": "Hawaii-Aleutian Time (HAT)"},
+    ]
+    
+    result = []
+    for tz_info in us_timezones:
+        try:
+            tz = pytz.timezone(tz_info["name"])
+            current_time = datetime.now(tz).strftime("%I:%M %p")
+            result.append({
+                "name": tz_info["name"],
+                "display_name": tz_info["display_name"],
+                "current_time": current_time
+            })
+        except Exception as e:
+            logging.error(f"Error getting timezone {tz_info['name']}: {e}")
+    
+    return result
 
 def validate_timezone(tz_name):
-    return True
+    """Validate if timezone name is valid"""
+    import pytz
+    try:
+        pytz.timezone(tz_name)
+        return True
+    except:
+        return False
 
 def format_datetime_for_display(dt):
     return dt.strftime("%Y-%m-%d %H:%M:%S")

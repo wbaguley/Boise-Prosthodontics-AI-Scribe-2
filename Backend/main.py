@@ -2265,6 +2265,23 @@ async def create_knowledge_article_endpoint(article: KnowledgeArticle):
         logging.error(f"Error creating knowledge article: {e}")
         raise HTTPException(status_code=500, detail="Failed to create knowledge article")
 
+@app.get("/api/knowledge-articles/{article_id}")
+async def get_knowledge_article_endpoint(article_id: str):
+    """Get a single knowledge article by ID"""
+    try:
+        from database import get_all_knowledge_articles
+        articles = get_all_knowledge_articles()
+        article = next((a for a in articles if a['id'] == article_id), None)
+        if article:
+            return article
+        else:
+            raise HTTPException(status_code=404, detail="Article not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error fetching knowledge article: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch knowledge article")
+
 @app.delete("/api/knowledge-articles/{article_id}")
 async def delete_knowledge_article_endpoint(article_id: str):
     """Delete a knowledge article"""

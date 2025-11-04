@@ -216,11 +216,13 @@ const Dashboard = ({ onNavigate }) => {
   };
 
   const loadConversation = async (conversation) => {
+    console.log('Loading conversation:', conversation);
     try {
       const response = await fetch(`${API_URL}/api/knowledge-articles/${conversation.id}`);
       if (!response.ok) throw new Error('Failed to load conversation');
       
       const data = await response.json();
+      console.log('Loaded data:', data);
       
       // Parse the conversation text back into messages
       const content = data.content || '';
@@ -243,6 +245,7 @@ const Dashboard = ({ onNavigate }) => {
         }
       }
       
+      console.log('Parsed messages:', messages);
       setTrainingMessages(messages);
       setCurrentConversationId(conversation.id);
       setConversationTitle(conversation.title);

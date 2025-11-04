@@ -2783,22 +2783,34 @@ async def set_system_timezone(request: dict):
 async def get_current_timezone():
     """Get current system timezone and formatted time"""
     try:
-        from timezone_utils import get_system_timezone
         from database import get_system_config
+        from datetime import datetime
+        import pytz
         
         tz_name = get_system_config("timezone", "America/Denver")
-        system_tz = get_system_timezone()
-        current_time = now_in_system_timezone()
+        
+        # Get current time in the configured timezone
+        try:
+            tz = pytz.timezone(tz_name)
+            current_time = datetime.now(tz)
+            current_time_str = current_time.strftime("%I:%M %p")
+            formatted_display = current_time.strftime("%Y-%m-%d %I:%M %p %Z")
+        except Exception as tz_err:
+            logging.error(f"Error with timezone {tz_name}: {tz_err}")
+            # Fall back to UTC
+            current_time = datetime.utcnow()
+            current_time_str = current_time.strftime("%I:%M %p UTC")
+            formatted_display = current_time.strftime("%Y-%m-%d %I:%M %p UTC")
         
         return {
             "success": True,
             "timezone": tz_name,
-            "current_time": format_datetime_for_display(current_time),
-            "formatted_display": format_for_soap_note(current_time)
+            "current_time": current_time_str,
+            "formatted_display": formatted_display
         }
     except Exception as e:
         logging.error(f"Error getting current timezone: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get current timezone")
+        raise HTTPException(status_code=500, detail=f"Failed to get current timezone: {str(e)}")
 
 # Initialize default configurations on startup - DISABLED FOR NOW
 # try:

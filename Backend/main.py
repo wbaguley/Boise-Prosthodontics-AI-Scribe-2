@@ -129,35 +129,9 @@ async def tenant_context_middleware(request: Request, call_next):
 OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://ollama:11434')
 MISTRAL_HOST = os.getenv('MISTRAL_HOST', 'http://mistral:11434')
 
-# Global LLM configuration - defaults to Llama 3.1
-CURRENT_LLM_MODEL = os.getenv('CURRENT_LLM_MODEL', 'llama3.1')  # 'llama3.1', 'codellama', 'mixtral', or 'meditron'
-CURRENT_LLM_HOST = OLLAMA_HOST
+# OLD Global LLM configuration removed - now using llm_provider.py
 WHISPER_MODEL_SIZE = os.getenv('WHISPER_MODEL', 'medium')
 HF_TOKEN = os.getenv('HF_TOKEN', '')
-
-# LLM Configuration Dictionary
-LLM_CONFIGS = {
-    "llama3.1": {
-        "name": "Llama 3.1 8B",
-        "model": "llama3.1:8b",
-        "host": OLLAMA_HOST
-    },
-    "codellama": {
-        "name": "Code Llama 13B",
-        "model": "codellama:13b",
-        "host": OLLAMA_HOST
-    },
-    "mixtral": {
-        "name": "Mixtral 8x7B",
-        "model": "mixtral:8x7b",
-        "host": OLLAMA_HOST
-    },
-    "meditron": {
-        "name": "Meditron 7B",
-        "model": "meditron:7b",
-        "host": OLLAMA_HOST
-    }
-}
 
 # Import database functions
 from database import (
@@ -211,6 +185,35 @@ if os.getenv("LLM_PROVIDER", "ollama") == "openai":
 
 llm_config = LLMConfig.load_from_env()
 llm_client = get_llm_client(llm_config)
+
+# Log initial LLM configuration
+logging.info(f"🚀 Started with LLM Provider: {llm_config.provider.value}")
+if llm_config.provider.value == "ollama":
+    logging.info(f"🚀 Ollama Model: {llm_config.ollama_model}")
+else:
+    logging.info(f"🚀 OpenAI Model: {llm_config.openai_model}")
+
+# Compatibility shim for old code that expects get_current_llm_config()
+def get_current_llm_config():
+    """
+    DEPRECATED: Compatibility shim for old code
+    Returns dict with 'host' and 'model' for Ollama API calls
+    NEW CODE SHOULD USE: llm_client.generate_soap_note() etc.
+    """
+    global llm_config
+    if llm_config.provider.value == "ollama":
+        return {
+            "host": llm_config.ollama_host,
+            "model": llm_config.ollama_model
+        }
+    else:
+        # If OpenAI is selected, fall back to Ollama for direct API calls
+        # (this code path should be refactored to use llm_client)
+        logging.warning("⚠️ OLD CODE: Using OpenAI but called get_current_llm_config() - falling back to Ollama")
+        return {
+            "host": os.getenv('OLLAMA_HOST', 'http://ollama:11434'),
+            "model": "llama3.1:8b"
+        }
 
 def convert_template_name_to_id(template_name):
     """Convert template display name to file ID"""
@@ -284,43 +287,7 @@ try:
 except Exception as e:
     print(f"[WARNING] Speaker diarization not available: {e}")
 
-# LLM Configuration Utility Functions
-def get_current_llm_config():
-    """Get current LLM host and model configuration as dictionary"""
-    global CURRENT_LLM_MODEL
-    
-    # Return config based on the current model
-    if CURRENT_LLM_MODEL in LLM_CONFIGS:
-        config = LLM_CONFIGS[CURRENT_LLM_MODEL]
-        return {
-            "host": config["host"],
-            "model": config["model"]
-        }
-    
-    # Default to llama3.1 if model not found
-    return {
-        "host": OLLAMA_HOST,
-        "model": "llama3.1:8b"
-    }
-
-def set_llm_model(model_type):
-    """Set the current LLM model (llama3.1, codellama, mixtral, or meditron)"""
-    global CURRENT_LLM_MODEL, CURRENT_LLM_HOST
-    if model_type in LLM_CONFIGS:
-        CURRENT_LLM_MODEL = model_type
-        CURRENT_LLM_HOST = LLM_CONFIGS[model_type]["host"]
-        os.environ['CURRENT_LLM_MODEL'] = model_type
-        
-        # Save to config file
-        try:
-            config_path = os.path.join(os.path.dirname(__file__), 'llm_config.json')
-            with open(config_path, 'w') as f:
-                json.dump({"current_model": model_type}, f)
-        except Exception as e:
-            logging.error(f"Failed to save LLM config: {e}")
-        
-        return True
-    return False
+# OLD LLM configuration utility functions removed - now using llm_provider.py
 
 # Pydantic models
 class SessionInfo(BaseModel):
@@ -2731,44 +2698,43 @@ The AI should incorporate this guidance in all future responses to maintain cons
 
 @app.get("/api/llm/status")
 async def get_llm_status():
-    """Get status of all available LLM models"""
+    """Get status of available Ollama models"""
     try:
         status = {}
-        for model_key, config in LLM_CONFIGS.items():
-            try:
-                response = requests.get(f"{config['host']}/api/tags", timeout=5)
-                status[model_key] = response.status_code == 200
-            except:
-                status[model_key] = False
+        ollama_host = os.getenv('OLLAMA_HOST', 'http://ollama:11434')
+        
+        # List of common models to check
+        models_to_check = ['llama3.1:8b', 'codellama:13b', 'mixtral:8x7b', 'meditron:7b']
+        
+        try:
+            response = requests.get(f"{ollama_host}/api/tags", timeout=5)
+            if response.status_code == 200:
+                available_models = response.json().get('models', [])
+                available_names = [m['name'] for m in available_models]
+                
+                # Check which models are available
+                for model in models_to_check:
+                    # Extract model name without tag for display
+                    model_display = model.split(':')[0]
+                    status[model_display] = model in available_names
+            else:
+                # If Ollama is down, mark all as unavailable
+                for model in models_to_check:
+                    model_display = model.split(':')[0]
+                    status[model_display] = False
+        except:
+            # If Ollama is down, mark all as unavailable
+            for model in models_to_check:
+                model_display = model.split(':')[0]
+                status[model_display] = False
         
         return status
     except Exception as e:
         logging.error(f"Error getting LLM status: {e}")
         raise HTTPException(status_code=500, detail="Failed to get LLM status")
 
-@app.post("/api/llm/switch")
-async def switch_llm_model(request: dict):
-    """Switch to a different LLM model"""
-    try:
-        llm_type = request.get("llm_type")
-        if not llm_type:
-            raise HTTPException(status_code=400, detail="llm_type is required")
-        
-        if llm_type not in LLM_CONFIGS:
-            raise HTTPException(status_code=400, detail=f"Unknown LLM type: {llm_type}")
-        
-        # Save the configuration choice to a file
-        config_path = os.path.join(os.path.dirname(__file__), "llm_config.json")
-        with open(config_path, "w") as f:
-            json.dump({"current_model": llm_type}, f)
-        
-        # Update global variables
-        set_llm_model(llm_type)
-        
-        return {"success": True, "message": f"Switched to {LLM_CONFIGS[llm_type]['name']}"}
-    except Exception as e:
-        logging.error(f"Error switching LLM: {e}")
-        raise HTTPException(status_code=500, detail="Failed to switch LLM model")
+
+# OLD /api/llm/switch endpoint removed - use /api/llm/config (POST) instead
 
 # ============================================
 # System Configuration API Endpoints
@@ -2994,6 +2960,10 @@ async def update_llm_config(request: dict):
         with open(env_path, 'w') as f:
             f.write('\n'.join(new_lines) + '\n')
         
+        # UPDATE os.environ with new values so LLMConfig.load_from_env() picks them up
+        for key, value in env_updates.items():
+            os.environ[key] = value
+        
         # Reload configuration with decrypted API key if using OpenAI
         global llm_config, llm_client
         
@@ -3007,7 +2977,7 @@ async def update_llm_config(request: dict):
         llm_config = LLMConfig.load_from_env()
         llm_client = get_llm_client(llm_config)
         
-        logging.info(f"✅ LLM configuration updated to {provider}")
+        logging.info(f"✅ LLM configuration updated to {provider} with model {env_updates.get('OPENAI_MODEL') or env_updates.get('OLLAMA_MODEL')}")
         
         return {
             "success": True,

@@ -326,9 +326,12 @@ const Dashboard = ({ onNavigate }) => {
     try {
       const response = await fetch(`${API_URL}/api/providers`);
       const data = await response.json();
-      setProviders(data);
+      // Ensure data is always an array
+      setProviders(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching providers:', error);
+      // Set to empty array on error to prevent filter errors
+      setProviders([]);
     }
   };
 

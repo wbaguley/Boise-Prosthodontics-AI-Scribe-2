@@ -1,10 +1,8 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile, Form, HTTPException, Request, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, List
 import os
-import io
 import logging
 from dotenv import load_dotenv
 
@@ -24,18 +22,40 @@ import re
 from cryptography.fernet import Fernet
 import base64
 import hashlib
-# Timezone imports
-import pytz
-from timezone_utils import (
-    now_in_system_timezone, 
-    format_datetime_for_display, 
-    format_date_for_display,
-    format_for_soap_note,
-    format_for_email_timestamp,
-    get_session_id_with_timezone,
-    get_available_timezones,
-    validate_timezone
-)
+# Timezone imports - disable for now to fix immediate issues
+# import pytz
+# from timezone_utils import (
+#     now_in_system_timezone, 
+#     format_datetime_for_display, 
+#     format_date_for_display,
+#     format_for_soap_note,
+#     format_for_email_timestamp,
+#     get_session_id_with_timezone,
+#     get_available_timezones,
+#     validate_timezone
+# )
+
+# Simple timezone replacements
+def format_for_soap_note():
+    return datetime.now().strftime("%B %d, %Y")
+
+def format_for_email_timestamp():
+    return datetime.now().strftime("%B %d, %Y")
+
+def get_session_id_with_timezone():
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+def now_in_system_timezone():
+    return datetime.now()
+
+def get_available_timezones():
+    return [{"name": "America/Denver", "display_name": "Mountain Time", "current_time": "12:00"}]
+
+def validate_timezone(tz_name):
+    return True
+
+def format_datetime_for_display(dt):
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 # Suppress warnings
 warnings.filterwarnings("ignore", message="FP16 is not supported on CPU")
@@ -61,77 +81,40 @@ app.add_middleware(
 
 # Tenant context middleware
 @app.middleware("http")
-async def tenant_context_middleware(request: Request, call_next):
-    """
-    Extract tenant context from request and attach to request.state
-    Supports multiple methods:
-    1. X-Tenant-ID header
-    2. Subdomain extraction (tenant.domain.com)
-    3. Default to 'default' tenant if not specified
-    """
-    tenant_id = None
+async def tenant_context_middleware(request, call_next):
+    """Extract tenant ID from host header and set as default for ngrok domains"""
+    host = request.headers.get("host", "").lower()
     
-    # Method 1: Check X-Tenant-ID header
-    tenant_id = request.headers.get("X-Tenant-ID")
+    # Extract subdomain as tenant_id
+    tenant_id = host.split('.')[0] if '.' in host else host
     
-    # Method 2: Extract from subdomain (if no header)
-    if not tenant_id:
-        host = request.headers.get("host", "")
-        if host:
-            # Extract subdomain (e.g., "tenant.example.com" -> "tenant")
-            parts = host.split(".")
-            if len(parts) > 2:
-                tenant_id = parts[0]
-    
-    # Method 3: Default tenant
-    if not tenant_id or tenant_id in ["localhost", "127", "www"]:
+    # Default tenant for localhost, ngrok, and common development domains
+    if not tenant_id or tenant_id in ["localhost", "127", "www"] or ".ngrok" in host or "-free.app" in host:
         tenant_id = "default"
     
-    # Load tenant configuration
-    try:
-        if tenant_manager.tenant_exists(tenant_id):
-            tenant_config = tenant_manager.load_tenant_config(tenant_id)
-        else:
-            # Create default tenant if it doesn't exist
-            if tenant_id == "default":
-                default_config = tenant_manager.get_default_config()
-                tenant_manager.save_tenant_config(default_config)
-                # Also create in database
-                create_tenant(
-                    tenant_id="default",
-                    practice_name="Boise Prosthodontics",
-                    subscription_tier="enterprise"
-                )
-                tenant_config = default_config
-            else:
-                # Tenant not found - return 404
-                return JSONResponse(
-                    status_code=404,
-                    content={"detail": f"Tenant '{tenant_id}' not found"}
-                )
-        
-        # Attach to request state
-        request.state.tenant_id = tenant_id
-        request.state.tenant_config = tenant_config
-        
-    except Exception as e:
-        logging.error(f"Error loading tenant config for {tenant_id}: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Failed to load tenant configuration"}
-        )
+    # Store tenant_id in request state
+    request.state.tenant_id = tenant_id
     
     response = await call_next(request)
     return response
 
-
 # Configuration
 OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://ollama:11434')
-MISTRAL_HOST = os.getenv('MISTRAL_HOST', 'http://mistral:11434')
 
-# OLD Global LLM configuration removed - now using llm_provider.py
-WHISPER_MODEL_SIZE = os.getenv('WHISPER_MODEL', 'medium')
+# Global LLM configuration
+CURRENT_LLM_MODEL = os.getenv('CURRENT_LLM_MODEL', 'llama')
+CURRENT_LLM_HOST = OLLAMA_HOST
+WHISPER_MODEL_SIZE = os.getenv('WHISPER_MODEL', 'tiny')
 HF_TOKEN = os.getenv('HF_TOKEN', '')
+
+# LLM Configuration Dictionary
+LLM_CONFIGS = {
+    "llama": {
+        "name": "Llama 3",
+        "model": "llama3",
+        "host": OLLAMA_HOST
+    }
+}
 
 # Import database functions
 from database import (
@@ -139,91 +122,14 @@ from database import (
     create_provider, get_all_providers, get_provider_by_id, get_provider_by_name,
     update_provider, delete_provider, update_provider_voice_profile,
     update_session_patient_info, update_session_email_content, mark_email_sent, get_session_email_status,
-    update_session_soap, update_session_template, SessionLocal, SystemConfig, Tenant,
-    create_tenant, get_tenant_by_id, get_all_tenants, update_tenant, delete_tenant
+    update_session_soap, update_session_template
 )
-from tenant_config import TenantConfig, tenant_manager
-from export_service import export_service
-from import_service import import_service
-
-# Import medical vocabulary for Whisper prompting
-from medical_vocabulary import get_medical_vocabulary
-# Import audio processor for noise reduction
-from audio_processor import get_audio_processor
-# Import Dentrix client for practice management integration
-from dentrix_client import get_dentrix_client
-# Import LLM provider abstraction layer
-from llm_provider import LLMConfig, get_llm_client
 from templates import TemplateManager
 from voice_profile_manager import VoiceProfileManager
-# Import concurrent processing system
-from task_queue import get_processing_queue, TaskStatus
-from whisper_pool import get_whisper_pool, transcribe_audio as pool_transcribe_audio
 
 # Initialize managers
 template_manager = TemplateManager()
 voice_manager = VoiceProfileManager()
-audio_processor = get_audio_processor(enable_noise_reduction=True, enable_normalization=True)
-
-# Initialize concurrent processing system
-processing_queue = get_processing_queue(max_workers=5)
-whisper_pool = get_whisper_pool(pool_size=3, model_size=os.getenv('WHISPER_MODEL', 'medium'))
-logging.info("🚀 Concurrent processing system initialized")
-logging.info(f"   - Processing Queue: 5 workers")
-logging.info(f"   - Whisper Pool: 3 models")
-
-# Load encrypted OpenAI API key from database if using OpenAI
-def load_openai_key_from_db():
-    """Load decrypted OpenAI API key from database storage"""
-    try:
-        db = get_db()
-        stored_key = db.query(SystemConfig).filter(SystemConfig.key == "openai_api_key_encrypted").first()
-        if stored_key:
-            decrypted_key = encryption_manager.decrypt_data(stored_key.value)
-            os.environ["OPENAI_API_KEY"] = decrypted_key
-            logging.info("✅ Loaded OpenAI API key from encrypted database storage")
-            return True
-        return False
-    except Exception as e:
-        logging.error(f"Error loading OpenAI key from database: {e}")
-        return False
-
-# Initialize LLM client from environment
-# Load API key from database if provider is OpenAI
-if os.getenv("LLM_PROVIDER", "ollama") == "openai":
-    load_openai_key_from_db()
-
-llm_config = LLMConfig.load_from_env()
-llm_client = get_llm_client(llm_config)
-
-# Log initial LLM configuration
-logging.info(f"🚀 Started with LLM Provider: {llm_config.provider.value}")
-if llm_config.provider.value == "ollama":
-    logging.info(f"🚀 Ollama Model: {llm_config.ollama_model}")
-else:
-    logging.info(f"🚀 OpenAI Model: {llm_config.openai_model}")
-
-# Compatibility shim for old code that expects get_current_llm_config()
-def get_current_llm_config():
-    """
-    DEPRECATED: Compatibility shim for old code
-    Returns dict with 'host' and 'model' for Ollama API calls
-    NEW CODE SHOULD USE: llm_client.generate_soap_note() etc.
-    """
-    global llm_config
-    if llm_config.provider.value == "ollama":
-        return {
-            "host": llm_config.ollama_host,
-            "model": llm_config.ollama_model
-        }
-    else:
-        # If OpenAI is selected, fall back to Ollama for direct API calls
-        # (this code path should be refactored to use llm_client)
-        logging.warning("⚠️ OLD CODE: Using OpenAI but called get_current_llm_config() - falling back to Ollama")
-        return {
-            "host": os.getenv('OLLAMA_HOST', 'http://ollama:11434'),
-            "model": "llama3.1:8b"
-        }
 
 def convert_template_name_to_id(template_name):
     """Convert template display name to file ID"""
@@ -297,7 +203,24 @@ try:
 except Exception as e:
     print(f"[WARNING] Speaker diarization not available: {e}")
 
-# OLD LLM configuration utility functions removed - now using llm_provider.py
+# LLM Configuration Utility Functions
+def get_current_llm_config():
+    """Get current LLM host and model configuration as dictionary"""
+    global CURRENT_LLM_MODEL, CURRENT_LLM_HOST
+    return {
+        "host": OLLAMA_HOST,
+        "model": "llama3"
+    }
+
+def set_llm_model(model_type):
+    """Set the current LLM model"""
+    global CURRENT_LLM_MODEL, CURRENT_LLM_HOST
+    if model_type == 'llama':
+        CURRENT_LLM_MODEL = model_type
+        CURRENT_LLM_HOST = OLLAMA_HOST
+        os.environ['CURRENT_LLM_MODEL'] = model_type
+        return True
+    return False
 
 # Pydantic models
 class SessionInfo(BaseModel):
@@ -400,11 +323,6 @@ class EncryptionManager:
 # Initialize encryption manager
 encryption_manager = EncryptionManager()
 
-# Database helper function
-def get_db():
-    """Get a database session"""
-    return SessionLocal()
-
 class SessionManager:
     def __init__(self):
         self.sessions = {}
@@ -453,276 +371,6 @@ def convert_audio_to_wav(audio_data):
         logging.error(f"Audio conversion error: {e}")
         return None
 
-def identify_doctor_speaker_from_profile(audio_path, speaker_segments, doctor_name):
-    """
-    Identify which speaker in the diarization is the doctor using voice profile matching
-    
-    Args:
-        audio_path: Path to the audio file
-        speaker_segments: List of speaker segments from diarization
-        doctor_name: Name of the doctor to match
-        
-    Returns:
-        str: Speaker ID that matches the doctor (e.g., "SPEAKER_00") or None
-    """
-    try:
-        import torchaudio
-        import tempfile
-        from collections import defaultdict
-        
-        # Load the audio file
-        waveform, sample_rate = torchaudio.load(audio_path)
-        
-        # Convert to mono if needed
-        if waveform.shape[0] > 1:
-            waveform = torch.mean(waveform, dim=0, keepdim=True)
-        
-        # Group segments by speaker
-        speaker_audio_times = defaultdict(list)
-        for seg in speaker_segments:
-            speaker_audio_times[seg['speaker']].append((seg['start'], seg['end']))
-        
-        # For each unique speaker, extract some audio and match against voice profile
-        best_match_speaker = None
-        best_confidence = 0.0
-        
-        logging.info(f"🎯 Matching {len(speaker_audio_times)} speakers against voice profile for {doctor_name}")
-        
-        for speaker_id, time_ranges in speaker_audio_times.items():
-            # Extract up to 5 seconds of this speaker's audio
-            total_duration = 0
-            audio_chunks = []
-            
-            for start, end in sorted(time_ranges):
-                if total_duration >= 5.0:
-                    break
-                    
-                start_sample = int(start * sample_rate)
-                end_sample = int(end * sample_rate)
-                chunk = waveform[:, start_sample:end_sample]
-                audio_chunks.append(chunk)
-                total_duration += (end - start)
-            
-            if not audio_chunks:
-                continue
-            
-            # Concatenate chunks
-            speaker_audio = torch.cat(audio_chunks, dim=1)
-            
-            # Save to temporary file for voice matching
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
-                tmp_path = tmp_file.name
-                torchaudio.save(tmp_path, speaker_audio, sample_rate)
-            
-            try:
-                # Match against voice profile
-                match_result = voice_manager.identify_speaker(tmp_path, [doctor_name])
-                
-                if match_result:
-                    confidence = match_result.get('confidence', 0)
-                    logging.info(f"   {speaker_id}: confidence={confidence:.3f}")
-                    
-                    if confidence > best_confidence:
-                        best_confidence = confidence
-                        best_match_speaker = speaker_id
-            finally:
-                # Clean up temp file
-                try:
-                    os.unlink(tmp_path)
-                except:
-                    pass
-        
-        if best_match_speaker and best_confidence > 0.4:  # Threshold for voice matching
-            logging.info(f"✅ Identified {best_match_speaker} as {doctor_name} with confidence {best_confidence:.3f}")
-            return best_match_speaker
-        else:
-            logging.warning(f"⚠️ No confident voice match found (best: {best_confidence:.3f})")
-            return None
-            
-    except Exception as e:
-        logging.error(f"Error in voice profile speaker identification: {e}")
-        return None
-
-
-def analyze_speaker_confidence(segments, speaker_segments, result):
-    """
-    Analyze the entire conversation to determine speaker identities with confidence scores
-    This prevents misidentification at the beginning by looking at the full context
-    
-    Args:
-        segments: Whisper transcription segments
-        speaker_segments: Diarization speaker segments
-        result: Full Whisper result
-    
-    Returns:
-        dict: Speaker confidence analysis {'SPEAKER_00': {'is_doctor': True, 'confidence': 0.85}}
-    """
-    from collections import defaultdict
-    
-    # Collect all text for each speaker
-    speaker_data = defaultdict(lambda: {
-        'texts': [],
-        'word_count': 0,
-        'segment_count': 0,
-        'medical_terms': 0,
-        'technical_terms': 0,
-        'questions_asked': 0,
-        'statements': 0,
-        'first_person_patient': 0,  # "my tooth hurts"
-        'second_person_doctor': 0,  # "your tooth needs"
-        'commands': 0,  # "open wide", "bite down"
-        'concerns': 0,  # "I'm worried", "it hurts"
-    })
-    
-    # Medical/dental terminology (doctor indicators)
-    medical_terms = [
-        'crown', 'implant', 'extraction', 'root canal', 'procedure', 'treatment',
-        'diagnosis', 'x-ray', 'bite', 'enamel', 'filling', 'bridge', 'veneer',
-        'orthodontic', 'periodontal', 'endodontic', 'prosthodontic', 'maxillary',
-        'mandibular', 'molar', 'premolar', 'incisor', 'canine', 'restoration',
-        'abutment', 'occlusion', 'caries', 'gingivitis', 'abscess'
-    ]
-    
-    # Technical procedure terms (strong doctor indicators)
-    technical_terms = [
-        'recommend', 'examine', 'evaluation', 'assessment', 'prognosis',
-        'prepare', 'place', 'adjust', 'cement', 'bond', 'contour',
-        'we need to', 'I suggest', 'the treatment plan', 'let me check'
-    ]
-    
-    # Patient concern phrases
-    patient_phrases = [
-        'it hurts', 'my tooth', 'my pain', 'i feel', 'i have', 'i want',
-        'i am worried', 'i think', 'can you', 'will it', 'how much',
-        'when will', 'i need', 'my gum', 'i am scared', 'i am nervous'
-    ]
-    
-    # Doctor directive phrases
-    doctor_phrases = [
-        'open wide', 'bite down', 'rinse', 'let me see', 'hold still',
-        'you need', 'your tooth', 'we should', 'i will', 'we can',
-        'looking at', 'the examination shows', 'based on'
-    ]
-    
-    # Collect data for each speaker
-    for segment in segments:
-        text = segment.get("text", "").strip()
-        if not text:
-            continue
-        
-        segment_start = segment.get("start", 0)
-        segment_end = segment.get("end", 0)
-        segment_mid = (segment_start + segment_end) / 2
-        
-        # Find which speaker this segment belongs to
-        speaker_id = None
-        for speaker_seg in speaker_segments:
-            if speaker_seg['start'] <= segment_mid <= speaker_seg['end']:
-                speaker_id = speaker_seg['speaker']
-                break
-        
-        if not speaker_id:
-            continue
-        
-        text_lower = text.lower()
-        words = text.split()
-        
-        # Collect data
-        speaker_data[speaker_id]['texts'].append(text)
-        speaker_data[speaker_id]['word_count'] += len(words)
-        speaker_data[speaker_id]['segment_count'] += 1
-        
-        # Count medical terms
-        for term in medical_terms:
-            if term in text_lower:
-                speaker_data[speaker_id]['medical_terms'] += 1
-        
-        # Count technical terms
-        for term in technical_terms:
-            if term in text_lower:
-                speaker_data[speaker_id]['technical_terms'] += 1
-        
-        # Count patient phrases
-        for phrase in patient_phrases:
-            if phrase in text_lower:
-                speaker_data[speaker_id]['first_person_patient'] += 1
-                speaker_data[speaker_id]['concerns'] += 1
-        
-        # Count doctor phrases
-        for phrase in doctor_phrases:
-            if phrase in text_lower:
-                speaker_data[speaker_id]['second_person_doctor'] += 1
-                speaker_data[speaker_id]['commands'] += 1
-        
-        # Count questions vs statements
-        if '?' in text:
-            speaker_data[speaker_id]['questions_asked'] += 1
-        else:
-            speaker_data[speaker_id]['statements'] += 1
-    
-    # Calculate confidence scores for each speaker being the doctor
-    speaker_scores = {}
-    
-    for speaker_id, data in speaker_data.items():
-        if data['word_count'] == 0:
-            speaker_scores[speaker_id] = {'is_doctor': False, 'confidence': 0.0, 'reason': 'No speech'}
-            continue
-        
-        # Calculate ratios
-        medical_ratio = data['medical_terms'] / max(data['word_count'], 1) * 100
-        technical_ratio = data['technical_terms'] / max(data['segment_count'], 1) * 10
-        patient_ratio = data['first_person_patient'] / max(data['segment_count'], 1) * 10
-        doctor_ratio = data['second_person_doctor'] / max(data['segment_count'], 1) * 10
-        command_ratio = data['commands'] / max(data['segment_count'], 1) * 10
-        
-        avg_words_per_segment = data['word_count'] / max(data['segment_count'], 1)
-        
-        # Doctor score (higher is more likely doctor)
-        doctor_score = (
-            medical_ratio * 0.3 +      # Medical terminology
-            technical_ratio * 0.25 +   # Technical procedure terms
-            doctor_ratio * 0.2 +       # "Your tooth" type phrases
-            command_ratio * 0.15 +     # Commands like "open wide"
-            min(avg_words_per_segment / 10, 1.0) * 0.1  # Doctors tend to speak in longer segments
-        )
-        
-        # Patient score (higher is more likely patient)
-        patient_score = (
-            patient_ratio * 0.4 +      # "My tooth hurts" type phrases
-            data['concerns'] / max(data['segment_count'], 1) * 0.3 +  # Expressions of concern
-            data['questions_asked'] / max(data['segment_count'], 1) * 0.3  # Asking questions
-        )
-        
-        # Determine identity
-        is_doctor = doctor_score > patient_score
-        confidence = abs(doctor_score - patient_score) / (doctor_score + patient_score + 0.01)
-        
-        reason = []
-        if is_doctor:
-            reason.append(f"medical={medical_ratio:.1f}%")
-            reason.append(f"technical={technical_ratio:.1f}")
-            reason.append(f"commands={command_ratio:.1f}")
-        else:
-            reason.append(f"patient_phrases={patient_ratio:.1f}")
-            reason.append(f"concerns={data['concerns']}")
-            reason.append(f"questions={data['questions_asked']}")
-        
-        speaker_scores[speaker_id] = {
-            'is_doctor': is_doctor,
-            'confidence': confidence,
-            'doctor_score': doctor_score,
-            'patient_score': patient_score,
-            'reason': ', '.join(reason),
-            'avg_words': avg_words_per_segment
-        }
-        
-        logging.info(f"Speaker {speaker_id}: {'DOCTOR' if is_doctor else 'PATIENT'} "
-                    f"(confidence: {confidence:.2f}, doctor_score: {doctor_score:.2f}, "
-                    f"patient_score: {patient_score:.2f}) - {speaker_scores[speaker_id]['reason']}")
-    
-    return speaker_scores
-
-
 def diarize_audio(audio_path):
     """Enhanced speaker diarization with better accuracy"""
     if not DIARIZATION_AVAILABLE or not DIARIZATION_PIPELINE:
@@ -768,93 +416,24 @@ def diarize_audio(audio_path):
         logging.error(f"Diarization error: {e}")
         return None
 
-def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_profile=False, provider_id=None):
-    """Enhanced transcription with improved speaker detection and medical vocabulary prompting"""
+def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_profile=False):
+    """Enhanced transcription with improved speaker detection"""
     
     if not WHISPER_AVAILABLE or not WHISPER_MODEL:
         return generate_mock_transcript()
     
     try:
-        # Step 1: Audio Quality Check and Preprocessing
-        logging.info("🔍 Checking audio quality...")
-        quality_metrics = audio_processor.check_audio_quality(audio_path)
+        # Get transcription with timestamps
+        result = WHISPER_MODEL.transcribe(
+            audio_path,
+            language="en",
+            word_timestamps=True,
+            initial_prompt="This is a dental consultation between a doctor and patient about crowns, implants, and prosthodontics."
+        )
         
-        if quality_metrics['warnings']:
-            for warning in quality_metrics['warnings']:
-                logging.warning(f"⚠️ Audio Quality: {warning}")
-        
-        if not quality_metrics['is_valid']:
-            logging.error("❌ Audio quality check failed - proceeding anyway")
-        else:
-            logging.info(f"✅ Audio quality OK: {quality_metrics['duration']:.1f}s at {quality_metrics['sample_rate']}Hz")
-        
-        # Step 2: Apply Noise Reduction and Preprocessing
-        logging.info("🎵 Applying noise reduction and audio preprocessing...")
-        processed_audio_path = audio_processor.reduce_noise(audio_path)
-        logging.info(f"✅ Audio preprocessing complete: {processed_audio_path}")
-        
-        # Use processed audio for transcription and diarization
-        audio_to_transcribe = processed_audio_path
-        
-        # Step 3: Get medical vocabulary prompt based on provider specialty
-        medical_prompt = "This is a dental consultation between a doctor and patient about crowns, implants, and prosthodontics."
-        
-        if provider_id:
-            try:
-                provider = get_provider_by_id(provider_id)
-                if provider and provider.get('specialty'):
-                    specialty = provider['specialty'].lower()
-                    vocab_manager = get_medical_vocabulary()
-                    medical_prompt = vocab_manager.get_prompt_for_specialty(specialty)
-                    logging.info(f"🎯 Using {specialty} medical vocabulary for Whisper prompting")
-                else:
-                    # Default to prosthodontics if no specialty specified
-                    vocab_manager = get_medical_vocabulary()
-                    medical_prompt = vocab_manager.get_prosthodontics_prompt()
-                    logging.info("📋 Using default prosthodontics vocabulary")
-            except Exception as e:
-                logging.error(f"Error loading medical vocabulary: {e}, using default prompt")
-        
-        # Step 4: Transcribe with Whisper using cleaned audio and medical vocabulary
-        logging.info("🎤 Transcribing with Whisper...")
-        
-        # Use Whisper pool for concurrent transcription support
-        if whisper_pool and whisper_pool.is_available():
-            logging.info("🏊 Using Whisper pool for concurrent transcription")
-            result = whisper_pool.transcribe_with_pool(
-                audio_to_transcribe,
-                language="en",
-                word_timestamps=True,
-                initial_prompt=medical_prompt,
-                condition_on_previous_text=True
-            )
-        elif WHISPER_MODEL:
-            # Fallback to global model if pool not available
-            logging.info("⚠️ Whisper pool unavailable, using global model")
-            result = WHISPER_MODEL.transcribe(
-                audio_to_transcribe,
-                language="en",
-                word_timestamps=True,
-                initial_prompt=medical_prompt,
-                condition_on_previous_text=True
-            )
-        else:
-            raise Exception("No Whisper model available")
-        
-        logging.info(f"✅ Transcription complete with medical vocabulary prompting")
-        
-        # Clean up processed audio file
-        try:
-            if processed_audio_path != audio_path and os.path.exists(processed_audio_path):
-                os.unlink(processed_audio_path)
-                logging.debug(f"🧹 Cleaned up processed audio: {processed_audio_path}")
-        except Exception as e:
-            logging.warning(f"Could not clean up processed audio: {e}")
-        
-        # Step 5: Get speaker diarization if available (use original audio for diarization)
+        # Get speaker diarization if available
         speaker_segments = None
         num_speakers = 1
-        doctor_speaker = None  # Will be identified using voice profile if available
         
         if DIARIZATION_AVAILABLE:
             speaker_segments = diarize_audio(audio_path)
@@ -862,66 +441,54 @@ def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_prof
                 unique_speakers = set(seg['speaker'] for seg in speaker_segments)
                 num_speakers = len(unique_speakers)
                 logging.info(f"Detected {num_speakers} unique speakers: {unique_speakers}")
-                
-                # Use voice profile matching if enabled and provider has a profile
-                if use_voice_profile and doctor_name and num_speakers > 1:
-                    logging.info(f"🎯 Voice profile matching enabled for {doctor_name}")
-                    try:
-                        # Identify which speaker is the doctor using voice profile
-                        doctor_speaker = identify_doctor_speaker_from_profile(
-                            audio_path, 
-                            speaker_segments, 
-                            doctor_name
-                        )
-                        
-                        if doctor_speaker:
-                            logging.info(f"✅ Voice profile identified doctor as {doctor_speaker}")
-                        else:
-                            logging.warning(f"⚠️ Voice profile matching failed, falling back to heuristics")
-                    except Exception as e:
-                        logging.error(f"Error in voice profile matching: {e}")
-                        logging.info("Falling back to medical term analysis")
         
         # Process segments with enhanced logic
         formatted_lines = []
         
         if speaker_segments and num_speakers > 1:
             # Multi-speaker conversation - use diarization
-            
-            # STEP 1: Analyze FULL conversation first to determine speaker identities
-            logging.info("🔍 Analyzing full conversation for speaker identification...")
-            speaker_confidence = analyze_speaker_confidence(
-                result.get("segments", []),
-                speaker_segments,
-                result
-            )
-            
-            # STEP 2: Determine which speaker is the doctor
-            # Priority: 1) Voice profile, 2) Confidence analysis
-            if doctor_speaker is None:
-                # Find speaker most likely to be the doctor based on full conversation analysis
-                best_doctor_candidate = None
-                best_confidence = 0.0
+            # Determine which speaker is likely the doctor based on speech patterns
+            speaker_stats = {}
+            for segment in result.get("segments", []):
+                segment_start = segment.get("start", 0)
+                segment_end = segment.get("end", 0)
+                segment_mid = (segment_start + segment_end) / 2
                 
-                for speaker_id, confidence_data in speaker_confidence.items():
-                    if confidence_data['is_doctor'] and confidence_data['confidence'] > best_confidence:
-                        best_confidence = confidence_data['confidence']
-                        best_doctor_candidate = speaker_id
-                
-                if best_doctor_candidate and best_confidence > 0.3:  # Minimum confidence threshold
-                    doctor_speaker = best_doctor_candidate
-                    logging.info(f"✅ Identified {doctor_speaker} as doctor (confidence: {best_confidence:.2f})")
-                else:
-                    logging.warning("⚠️ Low confidence in speaker identification, using fallback")
-                    # Fallback: speaker with most medical terms
-                    best_score = -1
-                    for speaker_id, confidence_data in speaker_confidence.items():
-                        if confidence_data['doctor_score'] > best_score:
-                            best_score = confidence_data['doctor_score']
-                            doctor_speaker = speaker_id
-                    logging.info(f"Fallback: Using {doctor_speaker} as doctor")
+                # Find speaker for this segment
+                for speaker_seg in speaker_segments:
+                    if speaker_seg['start'] <= segment_mid <= speaker_seg['end']:
+                        speaker_id = speaker_seg['speaker']
+                        if speaker_id not in speaker_stats:
+                            speaker_stats[speaker_id] = {'count': 0, 'words': 0, 'medical_terms': 0}
+                        
+                        speaker_stats[speaker_id]['count'] += 1
+                        words = segment["text"].split()
+                        speaker_stats[speaker_id]['words'] += len(words)
+                        
+                        # Count medical/dental terms to identify doctor
+                        medical_terms = ['tooth', 'crown', 'implant', 'extraction', 'root', 'canal', 'dentist', 'procedure', 'treatment', 'diagnosis', 'x-ray', 'bite', 'gum', 'enamel', 'filling', 'bridge', 'veneer', 'orthodontic', 'periodontal', 'endodontic', 'prosthodontic', 'oral', 'maxillary', 'mandibular', 'molar', 'premolar', 'incisor', 'canine']
+                        text_lower = segment["text"].lower()
+                        for term in medical_terms:
+                            speaker_stats[speaker_id]['medical_terms'] += text_lower.count(term)
+                        break
             
-            # STEP 3: Apply labels consistently to ALL segments
+            # Determine who is the doctor (usually speaks more medical terms and longer segments)
+            doctor_speaker = None
+            if len(speaker_stats) >= 2:
+                # Find speaker with most medical terms and longer average utterances
+                best_score = -1
+                for speaker_id, stats in speaker_stats.items():
+                    avg_words = stats['words'] / max(stats['count'], 1)
+                    medical_ratio = stats['medical_terms'] / max(stats['words'], 1)
+                    score = (avg_words * 0.3) + (medical_ratio * 0.7)  # Weight medical terms higher
+                    
+                    if score > best_score:
+                        best_score = score
+                        doctor_speaker = speaker_id
+                
+                logging.info(f"Identified doctor speaker: {doctor_speaker} based on medical content analysis")
+            
+            # Map segments to speakers
             for segment in result.get("segments", []):
                 text = segment["text"].strip()
                 if not text:
@@ -1630,10 +1197,10 @@ async def save_voice_profile(
         if not temp_files:
             raise HTTPException(status_code=400, detail="No valid audio files")
         
-        # Create voice profile (this will now save the audio files permanently)
+        # Create voice profile
         profile_info = voice_manager.create_profile(doctor_name, temp_files)
         
-        # Cleanup temp files AFTER they've been copied to permanent storage
+        # Cleanup temp files
         for temp_file in temp_files:
             try:
                 os.unlink(temp_file)
@@ -1647,12 +1214,11 @@ async def save_voice_profile(
                 profile_info['profile_path']
             )
             
-            logging.info(f"Voice profile created for {doctor_name} with {profile_info.get('num_samples', 0)} samples")
+            logging.info(f"Voice profile created for {doctor_name}")
             return {
                 "status": "Voice profile saved successfully",
                 "provider": doctor_name,
-                "samples": profile_info['num_samples'],
-                "sample_files": profile_info.get('sample_files', [])
+                "samples": profile_info['num_samples']
             }
         else:
             raise HTTPException(status_code=500, detail="Failed to create voice profile")
@@ -1674,29 +1240,6 @@ async def get_voice_profile_info(provider_name: str):
     if info:
         return info
     raise HTTPException(status_code=404, detail="Voice profile not found")
-
-@app.get("/api/voice-profile/{provider_name}/samples")
-async def get_voice_samples(provider_name: str):
-    """Get list of saved voice samples for a provider"""
-    try:
-        provider_dir = Path("voice_profiles") / provider_name.replace(" ", "_").lower()
-        samples_dir = provider_dir / "samples"
-        
-        if not samples_dir.exists():
-            return {"samples": [], "count": 0}
-        
-        samples = []
-        for sample_file in sorted(samples_dir.glob("*.wav")):
-            samples.append({
-                "filename": sample_file.name,
-                "path": str(sample_file),
-                "size": sample_file.stat().st_size
-            })
-        
-        return {"samples": samples, "count": len(samples)}
-    except Exception as e:
-        logging.error(f"Error getting voice samples: {e}")
-        return {"samples": [], "count": 0}
 
 @app.delete("/api/voice-profile/{provider_name}")
 async def delete_voice_profile(provider_name: str):
@@ -1805,8 +1348,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             transcript = transcribe_audio_with_diarization(
                                 wav_path, 
                                 doctor_name,
-                                use_voice_profile=use_voice_profile,
-                                provider_id=provider_id
+                                use_voice_profile=use_voice_profile
                             )
                             
                             if wav_path and os.path.exists(wav_path):
@@ -1922,133 +1464,6 @@ async def delete_session(session_id: str):
 async def get_provider_sessions(provider_id: int):
     """Get all sessions for a specific provider"""
     return get_sessions_by_provider(provider_id)
-
-# ============================================
-# Async Processing Endpoints
-# ============================================
-
-@app.post("/api/sessions/{session_id}/process/async")
-async def process_session_async(session_id: str):
-    """
-    Submit session for async background processing
-    Returns immediately with task_id for status tracking
-    """
-    try:
-        # Get session data
-        session = get_session_by_id(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-        
-        # Submit task to processing queue
-        task_id = processing_queue.submit_task(
-            session_id,  # For tracking
-            process_session_background,  # Function to call
-            session_id  # Argument to pass to function
-        )
-        
-        logging.info(f"📝 Submitted async processing for session {session_id}, task {task_id}")
-        
-        return {
-            "success": True,
-            "task_id": task_id,
-            "session_id": session_id,
-            "message": "Processing started in background"
-        }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error submitting async task: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/sessions/{session_id}/status")
-async def get_session_status(session_id: str):
-    """
-    Get processing status for a session
-    Returns task status and progress
-    """
-    try:
-        # Get session
-        session = get_session_by_id(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-        
-        # Get all tasks for this session
-        tasks = processing_queue.get_session_tasks(session_id)
-        
-        # Determine overall status
-        if not tasks:
-            # No async tasks - check if session has SOAP note
-            processing_status = "completed" if session.get('soap_note') else "pending"
-            task_info = None
-        else:
-            # Get latest task
-            latest_task = tasks[-1]
-            processing_status = latest_task['status']
-            task_info = latest_task
-        
-        return {
-            "success": True,
-            "session_id": session_id,
-            "processing_status": processing_status,
-            "task": task_info,
-            "has_soap": bool(session.get('soap_note')),
-            "has_transcript": bool(session.get('transcript'))
-        }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error getting session status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-def process_session_background(session_id: str):
-    """
-    Background worker function to process a session
-    Called by the task queue workers
-    """
-    try:
-        logging.info(f"🔄 Background processing started for session {session_id}")
-        
-        # Get session
-        session = get_session_by_id(session_id)
-        if not session:
-            raise Exception("Session not found")
-        
-        # If already has SOAP note, skip
-        if session.get('soap_note'):
-            logging.info(f"Session {session_id} already has SOAP note, skipping")
-            return {"status": "already_processed"}
-        
-        transcript = session.get('transcript', '')
-        if not transcript:
-            raise Exception("No transcript available")
-        
-        doctor_name = session.get('doctor_name', '')
-        template = session.get('template', 'default')
-        
-        # Generate SOAP note using LLM
-        logging.info(f"🤖 Generating SOAP note for session {session_id}")
-        soap_note = generate_soap_note(transcript, template, doctor_name)
-        
-        # Update session with SOAP note
-        from database import update_session_soap
-        update_session_soap(session_id, soap_note)
-        
-        logging.info(f"✅ Background processing completed for session {session_id}")
-        
-        return {
-            "status": "success",
-            "session_id": session_id,
-            "soap_length": len(soap_note) if soap_note else 0
-        }
-    
-    except Exception as e:
-        logging.error(f"❌ Background processing failed for session {session_id}: {e}")
-        raise
-
 
 # ============================================
 # Template Management Endpoints
@@ -2491,31 +1906,9 @@ async def decrypt_patient_data_endpoint(encrypted_data: dict):
 # ============================================
 
 @app.get("/api/config")
-async def get_config(request: Request):
-    """Get current configuration settings including tenant config (without sensitive data)"""
+async def get_config():
+    """Get current configuration settings (without sensitive data)"""
     try:
-        # Get tenant configuration - with fallback to default
-        tenant_config = getattr(request.state, 'tenant_config', None)
-        
-        if not tenant_config:
-            # Load default tenant config as fallback
-            try:
-                tenant_config = tenant_manager.load_tenant_config("default")
-                if not tenant_config:
-                    # Create default config
-                    tenant_config = tenant_manager.get_default_config()
-                    tenant_manager.save_tenant_config(tenant_config)
-            except Exception as e:
-                logging.error(f"Failed to load default tenant config: {e}")
-                # Use hardcoded defaults
-                from tenant_config import TenantConfig
-                tenant_config = TenantConfig(
-                    tenant_id="default",
-                    practice_name="Boise Prosthodontics",
-                    primary_color="#3B82F6",
-                    secondary_color="#8B5CF6"
-                )
-        
         return {
             "email": {
                 "smtp_server": os.getenv('SMTP_SERVER', ''),
@@ -2530,25 +1923,11 @@ async def get_config(request: Request):
             "ai": {
                 "ollama_host": os.getenv('OLLAMA_HOST', 'http://ollama:11434'),
                 "whisper_model": os.getenv('WHISPER_MODEL', 'tiny')
-            },
-            # Add tenant configuration
-            "tenant": {
-                "success": True,
-                "tenant_id": tenant_config.tenant_id,
-                "practice_name": tenant_config.practice_name,
-                "logo_url": tenant_config.logo_url,
-                "primary_color": tenant_config.primary_color,
-                "secondary_color": tenant_config.secondary_color,
-                "features_enabled": tenant_config.features_enabled,
-                "llm_provider": tenant_config.llm_provider,
-                "whisper_model": tenant_config.whisper_model
             }
         }
     except Exception as e:
         logging.error(f"Config retrieval error: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve configuration: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve configuration")
 
 @app.post("/api/config/email")
 async def update_email_config(config: dict):
@@ -3023,45 +2402,199 @@ The AI should incorporate this guidance in all future responses to maintain cons
         logging.error(f"Auto-learning error: {e}")
         raise HTTPException(status_code=500, detail="Failed to process auto-learning")
 
+# ====== LLM MODEL MANAGEMENT ENDPOINTS ======
+
+@app.get("/api/llm/config")
+async def get_llm_config():
+    """Get current LLM configuration"""
+    try:
+        # Format current config as an object matching the frontend expectations
+        current_llm_config = get_current_llm_config()
+        formatted_config = None
+        
+        # Find the current model configuration
+        formatted_config = None
+        for model_key, config in LLM_CONFIGS.items():
+            if config["host"] == current_llm_config["host"] and config["model"] == current_llm_config["model"]:
+                formatted_config = {
+                    "key": model_key,
+                    "name": config["name"],
+                    "model": config["model"],
+                    "host": config["host"]
+                }
+                break
+        
+        return {"success": True, "config": formatted_config}
+    except Exception as e:
+        logging.error(f"Error getting LLM config: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get LLM configuration")
+
+@app.post("/api/llm/config")
+async def set_llm_config(request: dict):
+    """Set current LLM configuration"""
+    try:
+        model_name = request.get("model", "llama")
+        if model_name not in LLM_CONFIGS:
+            raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
+        
+        # Save the configuration choice to a file
+        config_path = os.path.join(os.path.dirname(__file__), "llm_config.json")
+        with open(config_path, "w") as f:
+            json.dump({"current_model": model_name}, f)
+        
+        # Update global variables
+        set_llm_model(model_name)
+        
+        # Format config as an object matching the frontend expectations
+        config_data = LLM_CONFIGS[model_name]
+        formatted_config = {
+            "key": model_name,
+            "name": config_data["name"],
+            "model": config_data["model"],
+            "host": config_data["host"]
+        }
+        
+        return {"success": True, "config": formatted_config, "message": f"LLM switched to {config_data['name']}"}
+    except Exception as e:
+        logging.error(f"Error setting LLM config: {e}")
+        raise HTTPException(status_code=500, detail="Failed to set LLM configuration")
+
+@app.get("/api/llm/models")
+async def get_available_models():
+    """Get list of available LLM models"""
+    try:
+        models = []
+        for model_key, config in LLM_CONFIGS.items():
+            # Test connectivity to each model
+            try:
+                response = requests.get(f"{config['host']}/api/tags", timeout=5)
+                available = response.status_code == 200
+            except:
+                available = False
+                
+            models.append({
+                "key": model_key,
+                "name": config["name"],
+                "model": config["model"],
+                "host": config["host"],
+                "available": available
+            })
+        
+        # Format current config as an object matching the frontend expectations
+        current_llm_config = get_current_llm_config()
+        current_config = None
+        
+        # Find the current model configuration
+        for model_key, config in LLM_CONFIGS.items():
+            if config["host"] == current_llm_config["host"] and config["model"] == current_llm_config["model"]:
+                current_config = {
+                    "key": model_key,
+                    "name": config["name"],
+                    "model": config["model"],
+                    "host": config["host"]
+                }
+                break
+        
+        return {
+            "success": True,
+            "models": models,
+            "current": current_config
+        }
+    except Exception as e:
+        logging.error(f"Error getting available models: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get available models")
+
+@app.post("/api/llm/test")
+async def test_llm_connection(request: dict):
+    """Test connection to a specific LLM model"""
+    try:
+        model_name = request.get("model", "llama")
+        if model_name not in LLM_CONFIGS:
+            raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
+        
+        config = LLM_CONFIGS[model_name]
+        
+        # Test basic connectivity
+        response = requests.get(f"{config['host']}/api/tags", timeout=10)
+        if response.status_code != 200:
+            return {"success": False, "error": "Cannot connect to LLM service"}
+        
+        # Test model availability
+        tags_data = response.json()
+        available_models = [model["name"] for model in tags_data.get("models", [])]
+        
+        if config["model"] not in available_models:
+            return {
+                "success": False, 
+                "error": f"Model {config['model']} not found. Available models: {', '.join(available_models)}"
+            }
+        
+        # Test generation
+        test_response = requests.post(
+            f"{config['host']}/api/generate",
+            json={
+                "model": config["model"],
+                "prompt": "Test connection. Respond with 'OK'.",
+                "stream": False,
+                "options": {"temperature": 0.1}
+            },
+            timeout=15
+        )
+        
+        if test_response.status_code == 200:
+            result = test_response.json().get("response", "").strip()
+            return {
+                "success": True,
+                "message": f"Successfully connected to {config['name']}",
+                "response": result
+            }
+        else:
+            return {"success": False, "error": "Model failed to generate response"}
+            
+    except Exception as e:
+        logging.error(f"Error testing LLM connection: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/llm/status")
 async def get_llm_status():
-    """Get status of available Ollama models"""
+    """Get status of all available LLM models"""
     try:
         status = {}
-        ollama_host = os.getenv('OLLAMA_HOST', 'http://ollama:11434')
-        
-        # List of common models to check
-        models_to_check = ['llama3.1:8b', 'codellama:13b', 'mixtral:8x7b', 'meditron:7b']
-        
-        try:
-            response = requests.get(f"{ollama_host}/api/tags", timeout=5)
-            if response.status_code == 200:
-                available_models = response.json().get('models', [])
-                available_names = [m['name'] for m in available_models]
-                
-                # Check which models are available
-                for model in models_to_check:
-                    # Extract model name without tag for display
-                    model_display = model.split(':')[0]
-                    status[model_display] = model in available_names
-            else:
-                # If Ollama is down, mark all as unavailable
-                for model in models_to_check:
-                    model_display = model.split(':')[0]
-                    status[model_display] = False
-        except:
-            # If Ollama is down, mark all as unavailable
-            for model in models_to_check:
-                model_display = model.split(':')[0]
-                status[model_display] = False
+        for model_key, config in LLM_CONFIGS.items():
+            try:
+                response = requests.get(f"{config['host']}/api/tags", timeout=5)
+                status[model_key] = response.status_code == 200
+            except:
+                status[model_key] = False
         
         return status
     except Exception as e:
         logging.error(f"Error getting LLM status: {e}")
         raise HTTPException(status_code=500, detail="Failed to get LLM status")
 
-
-# OLD /api/llm/switch endpoint removed - use /api/llm/config (POST) instead
+@app.post("/api/llm/switch")
+async def switch_llm_model(request: dict):
+    """Switch to a different LLM model"""
+    try:
+        llm_type = request.get("llm_type")
+        if not llm_type:
+            raise HTTPException(status_code=400, detail="llm_type is required")
+        
+        if llm_type not in LLM_CONFIGS:
+            raise HTTPException(status_code=400, detail=f"Unknown LLM type: {llm_type}")
+        
+        # Save the configuration choice to a file
+        config_path = os.path.join(os.path.dirname(__file__), "llm_config.json")
+        with open(config_path, "w") as f:
+            json.dump({"current_model": llm_type}, f)
+        
+        # Update global variables
+        set_llm_model(llm_type)
+        
+        return {"success": True, "message": f"Switched to {LLM_CONFIGS[llm_type]['name']}"}
+    except Exception as e:
+        logging.error(f"Error switching LLM: {e}")
+        raise HTTPException(status_code=500, detail="Failed to switch LLM model")
 
 # ============================================
 # System Configuration API Endpoints
@@ -3168,914 +2701,6 @@ async def get_current_timezone():
     except Exception as e:
         logging.error(f"Error getting current timezone: {e}")
         raise HTTPException(status_code=500, detail="Failed to get current timezone")
-
-
-# ============================================================================
-# LLM PROVIDER CONFIGURATION
-# ============================================================================
-
-@app.get("/api/llm/config")
-async def get_llm_config_info():
-    """
-    Get current LLM provider configuration (without sensitive data like API keys)
-    
-    Returns:
-        dict: Current LLM provider and model information
-    """
-    try:
-        config_info = llm_config.get_info()
-        
-        # Check if OpenAI API key is stored in database (encrypted)
-        db = get_db()
-        stored_key = db.query(SystemConfig).filter(SystemConfig.key == "openai_api_key_encrypted").first()
-        has_openai_key = stored_key is not None
-        
-        return {
-            "success": True,
-            "llm_provider": config_info["provider"],
-            "model": config_info["model"],
-            "host": config_info["host"],
-            "has_api_key": has_openai_key  # Indicate if API key is configured
-        }
-    except Exception as e:
-        logging.error(f"Error getting LLM config: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get LLM configuration")
-
-
-@app.post("/api/llm/config")
-async def update_llm_config(request: dict):
-    """
-    Update LLM provider configuration with encrypted API key storage
-    
-    Args:
-        request: dict with provider, openai_api_key, openai_model, ollama_model
-    
-    Returns:
-        dict: Success status
-    """
-    try:
-        provider = request.get("provider", "ollama")
-        
-        # Build environment variables to update
-        env_updates = {
-            "LLM_PROVIDER": provider
-        }
-        
-        db = get_db()
-        
-        if provider == "openai":
-            api_key = request.get("openai_api_key")
-            model = request.get("openai_model", "gpt-4o-mini")
-            
-            # If API key is provided, encrypt and store it in database
-            if api_key:
-                encrypted_key = encryption_manager.encrypt_data(api_key)
-                
-                # Store or update encrypted key in database
-                stored_key = db.query(SystemConfig).filter(SystemConfig.key == "openai_api_key_encrypted").first()
-                if stored_key:
-                    stored_key.value = encrypted_key
-                    stored_key.updated_at = datetime.utcnow()
-                else:
-                    stored_key = SystemConfig(
-                        key="openai_api_key_encrypted",
-                        value=encrypted_key,
-                        description="Encrypted OpenAI API key"
-                    )
-                    db.add(stored_key)
-                db.commit()
-                
-                logging.info("✅ OpenAI API key encrypted and saved to database")
-            
-            env_updates["OPENAI_MODEL"] = model
-        else:
-            model = request.get("ollama_model", "llama3.1:8b")
-            env_updates["OLLAMA_MODEL"] = model
-        
-        # Update .env file (without API key - only provider and model)
-        env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
-        
-        # Read current .env
-        env_lines = []
-        if os.path.exists(env_path):
-            with open(env_path, 'r') as f:
-                env_lines = f.readlines()
-        
-        # Update or add new values
-        updated_keys = set()
-        new_lines = []
-        
-        for line in env_lines:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                new_lines.append(line)
-                continue
-            
-            key = line.split('=')[0]
-            if key in env_updates:
-                new_lines.append(f"{key}={env_updates[key]}")
-                updated_keys.add(key)
-            else:
-                new_lines.append(line)
-        
-        # Add any new keys that weren't in the file
-        for key, value in env_updates.items():
-            if key not in updated_keys:
-                new_lines.append(f"{key}={value}")
-        
-        # Write back to .env
-        with open(env_path, 'w') as f:
-            f.write('\n'.join(new_lines) + '\n')
-        
-        # UPDATE os.environ with new values so LLMConfig.load_from_env() picks them up
-        for key, value in env_updates.items():
-            os.environ[key] = value
-        
-        # Reload configuration with decrypted API key if using OpenAI
-        global llm_config, llm_client
-        
-        # If OpenAI, load API key from encrypted database storage
-        if provider == "openai":
-            stored_key = db.query(SystemConfig).filter(SystemConfig.key == "openai_api_key_encrypted").first()
-            if stored_key:
-                decrypted_key = encryption_manager.decrypt_data(stored_key.value)
-                os.environ["OPENAI_API_KEY"] = decrypted_key
-        
-        llm_config = LLMConfig.load_from_env()
-        llm_client = get_llm_client(llm_config)
-        
-        logging.info(f"✅ LLM configuration updated to {provider} with model {env_updates.get('OPENAI_MODEL') or env_updates.get('OLLAMA_MODEL')}")
-        
-        return {
-            "success": True,
-            "message": f"LLM provider updated to {provider}",
-            "provider": provider,
-            "model": env_updates.get("OPENAI_MODEL") or env_updates.get("OLLAMA_MODEL")
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error updating LLM config: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update LLM configuration: {str(e)}")
-
-
-@app.delete("/api/llm/config/api-key")
-async def delete_api_key():
-    """
-    Delete the stored OpenAI API key from encrypted database storage
-    
-    Returns:
-        dict: Success status
-    """
-    try:
-        db = get_db()
-        
-        # Find and delete the encrypted API key
-        stored_key = db.query(SystemConfig).filter(SystemConfig.key == "openai_api_key_encrypted").first()
-        
-        if stored_key:
-            db.delete(stored_key)
-            db.commit()
-            logging.info("✅ OpenAI API key deleted from database")
-            
-            # Clear from environment
-            if "OPENAI_API_KEY" in os.environ:
-                del os.environ["OPENAI_API_KEY"]
-            
-            # Switch to Ollama provider
-            global llm_config, llm_client
-            os.environ["LLM_PROVIDER"] = "ollama"
-            llm_config = LLMConfig.load_from_env()
-            llm_client = get_llm_client(llm_config)
-            
-            return {
-                "success": True,
-                "message": "API key deleted successfully. Switched to Ollama provider."
-            }
-        else:
-            return {
-                "success": True,
-                "message": "No API key was stored"
-            }
-            
-    except Exception as e:
-        logging.error(f"Error deleting API key: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete API key: {str(e)}")
-
-
-# ============================================================================
-# TENANT ADMINISTRATION ENDPOINTS
-# ============================================================================
-
-@app.post("/api/admin/tenants")
-async def create_new_tenant(request: dict):
-    """
-    Create a new tenant (admin only)
-    
-    Args:
-        request: dict with tenant_id, practice_name, subscription_tier, config
-    
-    Returns:
-        dict: Created tenant information
-    """
-    try:
-        tenant_id = request.get("tenant_id")
-        practice_name = request.get("practice_name")
-        subscription_tier = request.get("subscription_tier", "free")
-        config_data = request.get("config", {})
-        
-        if not tenant_id or not practice_name:
-            raise HTTPException(status_code=400, detail="tenant_id and practice_name are required")
-        
-        # Create tenant in database
-        db_result = create_tenant(
-            tenant_id=tenant_id,
-            practice_name=practice_name,
-            subscription_tier=subscription_tier
-        )
-        
-        if 'error' in db_result:
-            raise HTTPException(status_code=400, detail=db_result['error'])
-        
-        # Create tenant configuration file
-        tenant_config = TenantConfig(
-            tenant_id=tenant_id,
-            practice_name=practice_name,
-            subscription_tier=subscription_tier,
-            **config_data
-        )
-        
-        success = tenant_manager.save_tenant_config(tenant_config)
-        
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to save tenant configuration")
-        
-        return {
-            "success": True,
-            "message": f"Tenant {tenant_id} created successfully",
-            "tenant": db_result
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error creating tenant: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create tenant: {str(e)}")
-
-
-@app.get("/api/admin/tenants")
-async def list_all_tenants():
-    """
-    List all tenants (admin only)
-    
-    Returns:
-        dict: List of all tenants
-    """
-    try:
-        tenants = get_all_tenants()
-        
-        return {
-            "success": True,
-            "tenants": tenants,
-            "count": len(tenants)
-        }
-        
-    except Exception as e:
-        logging.error(f"Error listing tenants: {e}")
-        raise HTTPException(status_code=500, detail="Failed to list tenants")
-
-
-@app.get("/api/admin/tenants/{tenant_id}")
-async def get_tenant_info(tenant_id: str):
-    """
-    Get detailed tenant information (admin only)
-    
-    Args:
-        tenant_id: Tenant identifier
-    
-    Returns:
-        dict: Tenant information with configuration
-    """
-    try:
-        # Get from database
-        db_tenant = get_tenant_by_id(tenant_id)
-        
-        if not db_tenant:
-            raise HTTPException(status_code=404, detail=f"Tenant {tenant_id} not found")
-        
-        # Get configuration
-        tenant_config = tenant_manager.load_tenant_config(tenant_id)
-        
-        return {
-            "success": True,
-            "tenant": db_tenant,
-            "config": tenant_config.to_dict()
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error getting tenant {tenant_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get tenant: {str(e)}")
-
-
-@app.put("/api/admin/tenants/{tenant_id}")
-async def update_tenant_config(tenant_id: str, request: dict):
-    """
-    Update tenant configuration (admin only)
-    
-    Args:
-        tenant_id: Tenant identifier
-        request: dict with updated configuration
-    
-    Returns:
-        dict: Updated tenant information
-    """
-    try:
-        # Load current config
-        tenant_config = tenant_manager.load_tenant_config(tenant_id)
-        
-        # Update configuration fields
-        if "practice_name" in request:
-            tenant_config.practice_name = request["practice_name"]
-        if "logo_url" in request:
-            tenant_config.logo_url = request["logo_url"]
-        if "primary_color" in request:
-            tenant_config.primary_color = request["primary_color"]
-        if "secondary_color" in request:
-            tenant_config.secondary_color = request["secondary_color"]
-        if "features_enabled" in request:
-            tenant_config.features_enabled = request["features_enabled"]
-        if "dentrix_bridge_url" in request:
-            tenant_config.dentrix_bridge_url = request["dentrix_bridge_url"]
-        if "llm_provider" in request:
-            tenant_config.llm_provider = request["llm_provider"]
-        if "whisper_model" in request:
-            tenant_config.whisper_model = request["whisper_model"]
-        if "subscription_tier" in request:
-            tenant_config.subscription_tier = request["subscription_tier"]
-        
-        # Save configuration
-        success = tenant_manager.save_tenant_config(tenant_config)
-        
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to save tenant configuration")
-        
-        # Update database
-        db_update = {}
-        if "practice_name" in request:
-            db_update["practice_name"] = request["practice_name"]
-        if "subscription_tier" in request:
-            db_update["subscription_tier"] = request["subscription_tier"]
-        
-        if db_update:
-            update_tenant(tenant_id, **db_update)
-        
-        return {
-            "success": True,
-            "message": f"Tenant {tenant_id} updated successfully",
-            "config": tenant_config.to_dict()
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error updating tenant {tenant_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update tenant: {str(e)}")
-
-
-@app.delete("/api/admin/tenants/{tenant_id}")
-async def delete_tenant_endpoint(tenant_id: str, hard_delete: bool = False):
-    """
-    Delete tenant (admin only)
-    
-    Args:
-        tenant_id: Tenant identifier
-        hard_delete: If True, permanently delete; else soft delete
-    
-    Returns:
-        dict: Deletion status
-    """
-    try:
-        # Delete from database
-        result = delete_tenant(tenant_id, hard_delete=hard_delete)
-        
-        if 'error' in result:
-            raise HTTPException(status_code=404, detail=result['error'])
-        
-        # Delete configuration file if hard delete
-        if hard_delete:
-            tenant_manager.delete_tenant_config(tenant_id)
-        
-        return {
-            "success": True,
-            "message": f"Tenant {tenant_id} {'permanently deleted' if hard_delete else 'deactivated'}"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error deleting tenant {tenant_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete tenant: {str(e)}")
-
-
-# ============================================================================
-# EXPORT ENDPOINTS
-# ============================================================================
-
-@app.get("/api/sessions/{session_id}/export/pdf")
-async def export_session_pdf(session_id: str):
-    """
-    Export session as PDF document
-    
-    Args:
-        session_id: Session identifier
-        
-    Returns:
-        StreamingResponse: PDF file download
-    """
-    try:
-        pdf_bytes = export_service.export_session_to_pdf(session_id)
-        
-        # Get session date for filename
-        from database import get_session_by_id as get_sess
-        session = get_sess(session_id)
-        date_str = session.get('timestamp', datetime.now()).strftime('%Y%m%d') if session else datetime.now().strftime('%Y%m%d')
-        
-        filename = f"session_{session_id}_{date_str}.pdf"
-        
-        return StreamingResponse(
-            io.BytesIO(pdf_bytes),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-        
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logging.error(f"Error exporting PDF for session {session_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to export PDF")
-
-
-@app.get("/api/sessions/{session_id}/export/docx")
-async def export_session_docx(session_id: str):
-    """
-    Export session as Word document
-    
-    Args:
-        session_id: Session identifier
-        
-    Returns:
-        StreamingResponse: DOCX file download
-    """
-    try:
-        docx_bytes = export_service.export_session_to_docx(session_id)
-        
-        # Get session date for filename
-        from database import get_session_by_id as get_sess
-        session = get_sess(session_id)
-        date_str = session.get('timestamp', datetime.now()).strftime('%Y%m%d') if session else datetime.now().strftime('%Y%m%d')
-        
-        filename = f"session_{session_id}_{date_str}.docx"
-        
-        return StreamingResponse(
-            io.BytesIO(docx_bytes),
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-        
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logging.error(f"Error exporting DOCX for session {session_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to export DOCX")
-
-
-@app.get("/api/sessions/export/csv")
-async def export_sessions_csv(
-    provider_id: Optional[str] = Query(None),
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None)
-):
-    """
-    Export multiple sessions as CSV
-    
-    Args:
-        provider_id: Filter by provider ID (optional)
-        start_date: Start date filter in ISO format (optional)
-        end_date: End date filter in ISO format (optional)
-        
-    Returns:
-        StreamingResponse: CSV file download
-    """
-    try:
-        # Parse dates if provided
-        start_dt = datetime.fromisoformat(start_date) if start_date else None
-        end_dt = datetime.fromisoformat(end_date) if end_date else None
-        
-        csv_content = export_service.export_sessions_to_csv(
-            provider_id=provider_id,
-            start_date=start_dt,
-            end_date=end_dt
-        )
-        
-        # Generate filename
-        date_str = datetime.now().strftime('%Y%m%d')
-        filename = f"sessions_export_{date_str}.csv"
-        
-        return StreamingResponse(
-            io.StringIO(csv_content),
-            media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-        
-    except Exception as e:
-        logging.error(f"Error exporting sessions CSV: {e}")
-        raise HTTPException(status_code=500, detail="Failed to export CSV")
-
-
-@app.get("/api/voice-profiles/{provider_name}/export")
-async def export_voice_profile(provider_name: str):
-    """
-    Export voice profile as ZIP file
-    
-    Args:
-        provider_name: Provider name
-        
-    Returns:
-        StreamingResponse: ZIP file download
-    """
-    try:
-        zip_bytes = export_service.export_voice_profile(provider_name)
-        
-        safe_name = provider_name.lower().replace(' ', '_')
-        filename = f"voice_profile_{safe_name}.zip"
-        
-        return StreamingResponse(
-            io.BytesIO(zip_bytes),
-            media_type="application/zip",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-        
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logging.error(f"Error exporting voice profile for {provider_name}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to export voice profile")
-
-
-# ============================================================================
-# IMPORT ENDPOINTS
-# ============================================================================
-
-@app.post("/api/voice-profiles/{provider_name}/import")
-async def import_voice_profile(provider_name: str, file: UploadFile = File(...)):
-    """
-    Import voice profile from ZIP file
-    
-    Args:
-        provider_name: Provider name
-        file: ZIP file upload
-        
-    Returns:
-        dict: Success message
-    """
-    try:
-        # Validate file type
-        if not file.filename.endswith('.zip'):
-            raise HTTPException(status_code=400, detail="File must be a ZIP archive")
-        
-        # Read file content
-        zip_bytes = await file.read()
-        
-        # Validate ZIP structure
-        validation = import_service.validate_voice_profile_zip(zip_bytes)
-        if not validation['valid']:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid voice profile ZIP: {', '.join(validation['errors'])}"
-            )
-        
-        # Import voice profile
-        success = import_service.import_voice_profile(provider_name, zip_bytes)
-        
-        if success:
-            return {
-                "success": True,
-                "message": f"Voice profile imported successfully for {provider_name}",
-                "details": {
-                    "has_metadata": validation['has_metadata'],
-                    "sample_count": validation['sample_count']
-                }
-            }
-        else:
-            raise HTTPException(status_code=500, detail="Failed to import voice profile")
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error importing voice profile for {provider_name}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to import voice profile: {str(e)}")
-
-
-@app.post("/api/providers/import/csv")
-async def import_providers_csv(file: UploadFile = File(...)):
-    """
-    Import providers from CSV file
-    
-    Args:
-        file: CSV file upload
-        
-    Returns:
-        dict: Import results
-    """
-    try:
-        # Validate file type
-        if not file.filename.endswith('.csv'):
-            raise HTTPException(status_code=400, detail="File must be a CSV file")
-        
-        # Read file content
-        csv_content = await file.read()
-        csv_data = csv_content.decode('utf-8')
-        
-        # Import providers
-        result = import_service.import_providers_csv(csv_data)
-        
-        return {
-            "success": True,
-            "message": f"Import complete: {result['created']} created, {result['failed']} failed",
-            "results": result
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error importing providers CSV: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to import providers: {str(e)}")
-
-
-@app.post("/api/templates/import")
-async def import_soap_templates(file: UploadFile = File(...)):
-    """
-    Import SOAP templates from JSON file
-    
-    Args:
-        file: JSON file upload
-        
-    Returns:
-        dict: Success message
-    """
-    try:
-        # Validate file type
-        if not file.filename.endswith('.json'):
-            raise HTTPException(status_code=400, detail="File must be a JSON file")
-        
-        # Read and parse file content
-        json_content = await file.read()
-        json_data = json.loads(json_content.decode('utf-8'))
-        
-        # Import templates
-        success = import_service.import_soap_templates(json_data)
-        
-        if success:
-            return {
-                "success": True,
-                "message": "SOAP templates imported successfully"
-            }
-        else:
-            raise HTTPException(status_code=500, detail="Failed to import templates")
-            
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON file")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error importing SOAP templates: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to import templates: {str(e)}")
-
-
-# ============================================================================
-# DENTRIX INTEGRATION ENDPOINTS
-# ============================================================================
-
-@app.get("/api/dentrix/health")
-async def check_dentrix_health():
-    """
-    Check Dentrix bridge connectivity and health status
-    
-    Returns:
-        dict: Health status with bridge availability
-    """
-    try:
-        dentrix_client = get_dentrix_client()
-        is_healthy = dentrix_client.health_check()
-        
-        return {
-            "success": True,
-            "dentrix_available": is_healthy,
-            "bridge_url": dentrix_client.bridge_url,
-            "message": "Dentrix bridge is healthy" if is_healthy else "Dentrix bridge is not responding"
-        }
-    except Exception as e:
-        logging.error(f"Dentrix health check error: {e}")
-        return {
-            "success": False,
-            "dentrix_available": False,
-            "error": str(e)
-        }
-
-
-@app.get("/api/dentrix/patients/search")
-async def search_dentrix_patients(query: str):
-    """
-    Search for patients in Dentrix by name or chart number
-    
-    Args:
-        query: Patient name or chart number to search
-        
-    Returns:
-        list: Matching patient records from Dentrix
-    """
-    try:
-        if not query or len(query.strip()) < 2:
-            raise HTTPException(
-                status_code=400, 
-                detail="Search query must be at least 2 characters"
-            )
-        
-        dentrix_client = get_dentrix_client()
-        patients = dentrix_client.search_patients(query)
-        
-        logging.info(f"Dentrix patient search: '{query}' - Found {len(patients)} results")
-        
-        return {
-            "success": True,
-            "count": len(patients),
-            "patients": patients
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Dentrix patient search error: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to search Dentrix patients: {str(e)}"
-        )
-
-
-@app.get("/api/dentrix/patients/{patient_id}")
-async def get_dentrix_patient(patient_id: str):
-    """
-    Get full patient details from Dentrix including demographics and insurance
-    
-    Args:
-        patient_id: Dentrix patient ID
-        
-    Returns:
-        dict: Complete patient information
-    """
-    try:
-        dentrix_client = get_dentrix_client()
-        patient = dentrix_client.get_patient(patient_id)
-        
-        logging.info(f"Retrieved Dentrix patient: ID {patient_id}")
-        
-        return {
-            "success": True,
-            "patient": patient
-        }
-    except Exception as e:
-        logging.error(f"Get Dentrix patient error: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to get Dentrix patient: {str(e)}"
-        )
-
-
-class DentrixSoapRequest(BaseModel):
-    """Request model for sending SOAP note to Dentrix"""
-    patient_id: int
-    provider_id: int
-    note_type: str = "SOAP"
-    note_date: Optional[str] = None
-    appointment_id: Optional[int] = None
-
-
-@app.post("/api/sessions/{session_id}/send-to-dentrix")
-async def send_session_to_dentrix(session_id: str, request: DentrixSoapRequest):
-    """
-    Send session SOAP note to Dentrix and update session record
-    
-    Args:
-        session_id: Session ID containing SOAP note
-        request: Dentrix patient and provider information
-        
-    Returns:
-        dict: Success status with Dentrix note ID
-    """
-    try:
-        # Get session from database
-        session = get_session_by_id(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-        
-        # Check if SOAP note exists
-        if not session.get('soap_note'):
-            raise HTTPException(
-                status_code=400, 
-                detail="No SOAP note found for this session"
-            )
-        
-        # Check if already sent to Dentrix
-        if session.get('sent_to_dentrix'):
-            logging.warning(f"Session {session_id} already sent to Dentrix")
-            return {
-                "success": True,
-                "already_sent": True,
-                "message": "This SOAP note was already sent to Dentrix",
-                "dentrix_note_id": session.get('dentrix_note_id'),
-                "sent_at": session.get('dentrix_sent_at')
-            }
-        
-        # Send SOAP note to Dentrix
-        dentrix_client = get_dentrix_client()
-        result = dentrix_client.create_soap_note(
-            patient_id=request.patient_id,
-            provider_id=request.provider_id,
-            soap_note=session['soap_note'],
-            note_type=request.note_type,
-            note_date=request.note_date,
-            appointment_id=request.appointment_id
-        )
-        
-        if not result.get('success'):
-            raise HTTPException(
-                status_code=500, 
-                detail=f"Dentrix rejected SOAP note: {result.get('message', 'Unknown error')}"
-            )
-        
-        # Update session with Dentrix information
-        from database import update_session_dentrix_status
-        update_session_dentrix_status(
-            session_id=session_id,
-            dentrix_note_id=result.get('note_id'),
-            dentrix_patient_id=str(request.patient_id),
-            sent_to_dentrix=True
-        )
-        
-        logging.info(
-            f"✅ Session {session_id} sent to Dentrix: "
-            f"Patient {request.patient_id}, Note ID {result.get('note_id')}"
-        )
-        
-        return {
-            "success": True,
-            "dentrix_note_id": result.get('note_id'),
-            "message": "SOAP note successfully sent to Dentrix",
-            "timestamp": result.get('timestamp')
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Send to Dentrix error: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to send SOAP note to Dentrix: {str(e)}"
-        )
-
-
-@app.get("/api/dentrix/providers")
-async def get_dentrix_providers():
-    """
-    Get list of all providers from Dentrix
-    
-    Returns:
-        list: All providers with credentials and specialties
-    """
-    try:
-        dentrix_client = get_dentrix_client()
-        providers = dentrix_client.get_providers()
-        
-        logging.info(f"Retrieved {len(providers)} providers from Dentrix")
-        
-        return {
-            "success": True,
-            "count": len(providers),
-            "providers": providers
-        }
-    except Exception as e:
-        logging.error(f"Get Dentrix providers error: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to get Dentrix providers: {str(e)}"
-        )
-
-
-# ============================================================================
-# END DENTRIX INTEGRATION
-# ============================================================================
 
 # Initialize default configurations on startup - DISABLED FOR NOW
 # try:

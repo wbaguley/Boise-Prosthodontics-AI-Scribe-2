@@ -251,11 +251,14 @@ except Exception as e:
 # LLM Configuration Utility Functions
 def get_current_llm_config():
     """Get current LLM host and model configuration as dictionary"""
-    global CURRENT_LLM_MODEL, CURRENT_LLM_HOST
-    return {
+    global CURRENT_LLM_MODEL
+    if CURRENT_LLM_MODEL in LLM_CONFIGS:
+        return LLM_CONFIGS[CURRENT_LLM_MODEL]
+    # Default to llama if current model not found
+    return LLM_CONFIGS.get("llama", {
         "host": OLLAMA_HOST,
-        "model": "llama3"
-    }
+        "model": "llama3.1:8b"
+    })
 
 def set_llm_model(model_type):
     """Set the current LLM model"""

@@ -92,14 +92,13 @@ const SessionDetail = ({ sessionId, onNavigate, onClose }) => {
       return;
     }
 
-    if (newTemplate === session?.template_used) {
-      alert('This template is already being used');
-      return;
-    }
+    // Allow regeneration even with same template
+    const isSameTemplate = newTemplate === session?.template_used;
+    const confirmMessage = isSameTemplate
+      ? `Are you sure you want to regenerate the SOAP note with the current "${formatTemplateName(newTemplate)}" template? This will replace the current SOAP note.`
+      : `Are you sure you want to regenerate the SOAP note using the "${formatTemplateName(newTemplate)}" template? This will replace the current SOAP note.`;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to regenerate the SOAP note using the "${formatTemplateName(newTemplate)}" template? This will replace the current SOAP note.`
-    );
+    const confirmed = window.confirm(confirmMessage);
 
     if (!confirmed) {
       return;
@@ -668,30 +667,10 @@ What would you like to change?`,
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Session Info Card */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid md:grid-cols-2 gap-4">
             <div>
               <h3 className="font-medium text-gray-700">Session ID</h3>
               <p className="text-sm text-gray-600">{session?.session_id}</p>
-            </div>
-            <div>
-              <h3 className="font-medium text-gray-700">Template</h3>
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-gray-600">{formatTemplateName(session?.template_used)}</p>
-                <button
-                  onClick={() => {
-                    if (availableTemplates.length === 0) {
-                      alert('Loading templates, please wait...');
-                      fetchTemplates();
-                    } else {
-                      setShowTemplateModal(true);
-                    }
-                  }}
-                  className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
-                  title="Change Template & Regenerate SOAP"
-                >
-                  🔄 Switch
-                </button>
-              </div>
             </div>
             <div>
               <h3 className="font-medium text-gray-700">Provider</h3>
@@ -716,6 +695,68 @@ What would you like to change?`,
               <pre className="whitespace-pre-wrap text-sm">
                 {session.transcript}
               </pre>
+            </div>
+          </div>
+        )}
+
+        {/* SOAP Generation Banner */}
+        {session?.transcript && (
+          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl shadow-lg p-6 mb-6 text-white">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-white/20 rounded-full p-3">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg">Generate SOAP Note</h3>
+                  <p className="text-sm text-white/90">Select a template to regenerate the SOAP note from the transcript</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <select
+                  value={selectedTemplate || session?.template_used || ''}
+                  onChange={(e) => setSelectedTemplate(e.target.value)}
+                  disabled={isRegeneratingSOAP}
+                  className="px-4 py-2 bg-white text-gray-800 rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-white/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">Select Template</option>
+                  {availableTemplates.map((template) => (
+                    <option key={template} value={template}>
+                      {formatTemplateName(template)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => {
+                    const templateToUse = selectedTemplate || session?.template_used;
+                    if (templateToUse && session?.transcript) {
+                      regenerateSOAPWithTemplate(templateToUse);
+                    } else {
+                      alert('Please select a template');
+                    }
+                  }}
+                  disabled={isRegeneratingSOAP || !session?.transcript || (!selectedTemplate && !session?.template_used)}
+                  className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                    isRegeneratingSOAP || !session?.transcript || (!selectedTemplate && !session?.template_used)
+                      ? 'bg-white/30 cursor-not-allowed'
+                      : 'bg-white text-green-600 hover:bg-white/90 hover:shadow-lg'
+                  }`}
+                >
+                  {isRegeneratingSOAP ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Generating...
+                    </span>
+                  ) : (
+                    '📝 Create SOAP Note'
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}

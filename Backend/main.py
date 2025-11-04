@@ -662,10 +662,31 @@ Doctor: The crown appears to be failing. We'll need to replace it."""
 def generate_soap_note(transcript, template_name="default", doctor_name=""):
     """Generate SOAP note using Ollama with template and AI memory knowledge"""
     
+    # Get current date/time from configured timezone
+    from database import get_system_config
+    from datetime import datetime
+    import pytz
+    
+    tz_name = get_system_config("timezone", "America/Denver")
+    try:
+        tz = pytz.timezone(tz_name)
+        current_dt = datetime.now(tz)
+        current_date = current_dt.strftime("%B %d, %Y")  # e.g., "November 4, 2025"
+        current_time = current_dt.strftime("%I:%M %p")   # e.g., "03:25 PM"
+        current_full = current_dt.strftime("%B %d, %Y at %I:%M %p")  # Full format
+    except Exception as e:
+        logging.error(f"Error getting timezone {tz_name}: {e}")
+        current_dt = datetime.utcnow()
+        current_date = current_dt.strftime("%B %d, %Y")
+        current_time = current_dt.strftime("%I:%M %p UTC")
+        current_full = current_dt.strftime("%B %d, %Y at %I:%M %p UTC")
+    
     # Debug logging to track template usage
     logging.info(f"🔍 SOAP Generation Debug:")
     logging.info(f"   Requested template: {template_name}")
     logging.info(f"   Doctor name: {doctor_name}")
+    logging.info(f"   Current date/time: {current_full}")
+    logging.info(f"   Timezone: {tz_name}")
     
     template = template_manager.get_template(template_name)
     ai_instructions = ""
@@ -729,7 +750,13 @@ def generate_soap_note(transcript, template_name="default", doctor_name=""):
 
 SYSTEM IDENTITY: You are Dr. {doctor_name} creating an official clinical SOAP note for a real patient encounter.
 
-🚨 ABSOLUTE PROHIBITION - NEVER SAY THESE PHRASES 🚨
+� CURRENT DATE AND TIME: {current_full}
+🕒 TODAY'S DATE: {current_date}
+⏰ CURRENT TIME: {current_time}
+
+🚨 CRITICAL: Use the date "{current_date}" for this patient encounter documentation. This visit occurred on {current_date}. DO NOT use any other dates.
+
+�🚨 ABSOLUTE PROHIBITION - NEVER SAY THESE PHRASES 🚨
 {', '.join([f'"{phrase}"' for phrase in forbidden_phrases])}
 
 🧠 MEDICAL KNOWLEDGE TO APPLY:
@@ -757,6 +784,7 @@ This is a REAL CLINICAL ENCOUNTER requiring IMMEDIATE documentation. You MUST:
 8. ❌ NEVER mention "transcript", "discussion", or "consultation" generically
 9. ✅ Write in first person as the treating doctor
 10. ✅ Create a complete, detailed, professional medical record
+11. 📅 ALWAYS use the current date: {current_date} for this encounter
 
 🚑 MEDICAL EMERGENCY DOCUMENTATION REQUIRED - WRITE THE SOAP NOTE IMMEDIATELY:"""
 
@@ -1442,6 +1470,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             
                             soap = generate_soap_note(transcript, template_name, doctor_name or "")
                             
+                            # Save session with both transcript and SOAP note
                             save_session(
                                 session_id, 
                                 doctor_name or "Unknown", 
@@ -1454,7 +1483,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             await websocket.send_json({
                                 "transcript": transcript,
                                 "soap": soap,
-                                "status": "Complete"
+                                "status": "Complete",
+                                "session_id": session_id
                             })
                             
                             logging.info(f"Session {session_id}: Completed by {doctor_name}")
@@ -1517,6 +1547,61 @@ async def update_session(session_id: str, update_data: dict):
     except Exception as e:
         logging.error(f"Error updating session {session_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update session")
+
+@app.post("/api/sessions/{session_id}/generate-soap")
+async def generate_soap_for_session(session_id: str, request_data: dict):
+    """Generate SOAP note from existing transcript"""
+    try:
+        # Get the session
+        session = get_session_by_id(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Get transcript from session
+        transcript = session.get('transcript', '')
+        if not transcript:
+            raise HTTPException(status_code=400, detail="No transcript found in session")
+        
+        # Get template and doctor from request
+        template_name = request_data.get('template', 'new_patient_consultation')
+        doctor_name = session.get('doctor', '') or request_data.get('doctor', '')
+        
+        # Convert template display name to file ID if needed
+        template_id = convert_template_name_to_id(template_name)
+        
+        logging.info(f"Generating SOAP note for session {session_id}")
+        logging.info(f"   Doctor: {doctor_name}")
+        logging.info(f"   Template: {template_id}")
+        logging.info(f"   Transcript length: {len(transcript)} chars")
+        
+        # Generate SOAP note
+        soap_note = generate_soap_note(transcript, template_id, doctor_name)
+        
+        # Update session with SOAP note
+        from database import update_session_soap
+        success = update_session_soap(session_id, soap_note)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save SOAP note")
+        
+        logging.info(f"SOAP note generated successfully for session {session_id}")
+        
+        # Return updated session
+        updated_session = get_session_by_id(session_id)
+        return {
+            "success": True,
+            "session_id": session_id,
+            "soap_note": soap_note,
+            "session": updated_session
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error generating SOAP for session {session_id}: {e}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate SOAP note: {str(e)}")
 
 @app.delete("/api/sessions/{session_id}")
 async def delete_session(session_id: str):
@@ -1876,11 +1961,26 @@ async def regenerate_soap(request: dict):
         template = request.get("template")
         doctor = request.get("doctor")
         
+        logging.info(f"🔄 REGENERATE_SOAP called:")
+        logging.info(f"   Session ID: {session_id}")
+        logging.info(f"   Template: {template}")
+        logging.info(f"   Doctor: {doctor}")
+        logging.info(f"   Transcript length: {len(transcript) if transcript else 0} chars")
+        logging.info(f"   Transcript preview: {transcript[:200] if transcript else 'MISSING'}...")
+        
         if not all([session_id, transcript, template, doctor]):
-            raise HTTPException(status_code=400, detail="Missing required fields")
+            missing = []
+            if not session_id: missing.append("session_id")
+            if not transcript: missing.append("transcript")
+            if not template: missing.append("template")
+            if not doctor: missing.append("doctor")
+            logging.error(f"   ❌ Missing required fields: {missing}")
+            raise HTTPException(status_code=400, detail=f"Missing required fields: {missing}")
         
         # Generate new SOAP note using existing function
         soap_note = generate_soap_note(transcript, template, doctor)
+        
+        logging.info(f"   ✅ SOAP note generated, length: {len(soap_note)} chars")
         
         # Update session SOAP note
         update_session_soap(session_id, soap_note)
@@ -1896,6 +1996,8 @@ async def regenerate_soap(request: dict):
         
     except Exception as e:
         logging.error(f"Error regenerating SOAP note: {e}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to regenerate SOAP note: {str(e)}")
 
 # ============================================

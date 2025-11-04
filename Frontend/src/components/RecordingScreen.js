@@ -134,34 +134,29 @@ const RecordingScreen = ({ onNavigate }) => {
             
             // Update progress based on status
             if (data.status.includes('Converting audio')) {
-              setProcessingStage('Preparing audio');
+              setProcessingStage('Converting audio');
               setProcessingProgress(25);
             } else if (data.status.includes('Transcribing')) {
               setProcessingStage('Transcribing with speaker detection');
               setProcessingProgress(50);
-            } else if (data.status.includes('Generating SOAP')) {
-              setProcessingStage('Generating SOAP note with AI');
-              setProcessingProgress(75);
-              setIsGeneratingSOAP(true);
-            } else if (data.status === 'Complete') {
-              setProcessingStage('Complete');
+            } else if (data.status.includes('Transcript ready')) {
+              setProcessingStage('Transcript ready');
               setProcessingProgress(100);
-              setIsGeneratingSOAP(false);
               setTimeout(() => {
                 setProcessingProgress(0);
                 setProcessingStage('');
               }, 2000);
             } else if (data.status.includes('Processing audio')) {
-              setProcessingStage('Preparing audio');
+              setProcessingStage('Processing audio');
               setProcessingProgress(20);
             } else if (data.status.includes('chunks')) {
-              // Handle recording chunk messages
+              // Handle recording chunk messages by showing incremental progress
               const chunkMatch = data.status.match(/(\d+) chunks/);
               if (chunkMatch) {
                 const chunks = parseInt(chunkMatch[1]);
                 const chunkProgress = Math.min(15 + (chunks * 2), 40); // 15% to 40% based on chunks
                 setProcessingProgress(chunkProgress);
-                setProcessingStage('Processing your recording...');
+                setProcessingStage(`Recording... ${chunks} chunks`);
               }
             }
           }
@@ -309,6 +304,57 @@ const RecordingScreen = ({ onNavigate }) => {
       setStatus('Failed to send audio');
       setProcessingProgress(0);
       setProcessingStage('');
+    }
+  };
+
+  const generateSOAPNote = async () => {
+    if (!transcript) {
+      alert('No transcript available. Please record a session first.');
+      return;
+    }
+
+    if (!sessionId) {
+      alert('No session ID available. Please record a session first.');
+      return;
+    }
+
+    setIsGeneratingSOAP(true);
+    setStatus('Generating SOAP note with AI...');
+    setProcessingStage('Generating SOAP note with AI');
+    setProcessingProgress(50);
+
+    try {
+      const response = await fetch(`${API_URL}/api/sessions/${sessionId}/generate-soap`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template: selectedTemplate,
+          doctor: selectedProvider?.name || ''
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSoapNote(data.soap_note);
+        setStatus('SOAP note generated successfully');
+        setProcessingProgress(100);
+        setTimeout(() => {
+          setProcessingProgress(0);
+          setProcessingStage('');
+        }, 2000);
+      } else {
+        const error = await response.json();
+        setStatus(`Failed to generate SOAP note: ${error.detail || 'Unknown error'}`);
+        setProcessingProgress(0);
+        setProcessingStage('');
+      }
+    } catch (error) {
+      console.error('Error generating SOAP note:', error);
+      setStatus('Error generating SOAP note');
+      setProcessingProgress(0);
+      setProcessingStage('');
+    } finally {
+      setIsGeneratingSOAP(false);
     }
   };
 
@@ -647,26 +693,68 @@ What would you like to change about the SOAP note?`,
                   ))}
                 </select>
               </div>
-              
-              <div className="w-full sm:w-auto">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Template
-                </label>
-                <select
-                  value={selectedTemplate}
-                  onChange={(e) => setSelectedTemplate(e.target.value)}
-                  className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  {availableTemplates.map(template => (
-                    <option key={template} value={template}>
-                      {formatTemplateName(template)}
-                    </option>
-                  ))}
-                </select>
-              </div>
             </div>
           </div>
         </div>
+        
+        {/* Create SOAP Note Section - Only shown when transcript is ready */}
+        {transcript && !soapNote && (
+          <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl shadow-lg p-6 mb-6 border-2 border-green-200">
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="flex-shrink-0">
+                <div className="text-4xl">📝</div>
+              </div>
+              <div className="flex-1 text-center sm:text-left">
+                <h3 className="text-lg font-semibold text-gray-800 mb-1">
+                  Transcript Ready!
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Select a template and click "Create SOAP Note" to generate the documentation
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 items-center">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Template
+                  </label>
+                  <select
+                    value={selectedTemplate}
+                    onChange={(e) => setSelectedTemplate(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm bg-white"
+                    disabled={isGeneratingSOAP}
+                  >
+                    {availableTemplates.map(template => (
+                      <option key={template} value={template}>
+                        {formatTemplateName(template)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={generateSOAPNote}
+                  disabled={isGeneratingSOAP}
+                  className={`mt-5 px-6 py-2 rounded-lg font-medium text-white transition-all ${
+                    isGeneratingSOAP
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 shadow-md hover:shadow-lg'
+                  }`}
+                >
+                  {isGeneratingSOAP ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                      </svg>
+                      Generating...
+                    </span>
+                  ) : (
+                    'Create SOAP Note'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Processing Indicator */}
         {processingProgress > 0 && processingProgress < 100 && (

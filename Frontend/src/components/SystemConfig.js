@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const SystemConfig = () => {
+const SystemConfig = ({ onNavigate }) => {
   const [configs, setConfigs] = useState([]);
   const [timezones, setTimezones] = useState([]);
   const [currentTimezone, setCurrentTimezone] = useState('');
@@ -168,7 +168,15 @@ const SystemConfig = () => {
 
   return (
     <div className="max-w-4xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">System Configuration</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">System Configuration</h1>
+        <button
+          onClick={() => onNavigate && onNavigate('dashboard')}
+          className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2"
+        >
+          ← Back to Dashboard
+        </button>
+      </div>
       
       {message && (
         <div className="mb-4 p-3 bg-green-100 text-green-700 rounded border">

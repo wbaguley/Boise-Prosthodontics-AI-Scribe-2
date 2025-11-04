@@ -910,13 +910,6 @@ const Dashboard = ({ onNavigate }) => {
                 </button>
 
                 <button
-                  onClick={() => onNavigate && onNavigate('system-config')}
-                  className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center justify-center gap-2 text-sm"
-                >
-                  🕒 System Config
-                </button>
-
-                <button
                   onClick={() => setShowSettings(true)}
                   className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm"
                 >
@@ -957,8 +950,8 @@ const Dashboard = ({ onNavigate }) => {
 
           <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-600">Current LLM</h3>
-              <div className={`w-3 h-3 rounded-full ${currentLLM.startsWith('OpenAI') || llmStatus[currentLLM] ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <h3 className="text-xs sm:text-sm font-medium text-gray-600">Current AI Model</h3>
+              <div className={`w-3 h-3 rounded-full ${getStatusColor(systemStatus.ollama)}`}></div>
             </div>
             <p className="text-lg sm:text-2xl font-bold text-gray-800">
               {currentLLM === 'llama3.1' ? 'Llama 3.1 8B' : 
@@ -1157,6 +1150,22 @@ const Dashboard = ({ onNavigate }) => {
                       <div className="text-xs text-gray-500 mt-3">
                         Click to change model or switch to OpenAI
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Timezone Configuration */}
+                <div className="bg-gradient-to-br from-teal-50 to-teal-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
+                     onClick={() => {
+                       setShowSettings(false);
+                       onNavigate && onNavigate('system-config');
+                     }}>
+                  <div className="text-center">
+                    <div className="text-4xl mb-4">🕒</div>
+                    <h4 className="font-semibold text-lg text-gray-800">Timezone</h4>
+                    <p className="text-sm text-gray-600 mt-2">Configure system timezone settings</p>
+                    <div className="mt-4 text-xs text-teal-600">
+                      System Time Configuration
                     </div>
                   </div>
                 </div>

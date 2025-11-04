@@ -156,11 +156,21 @@ from dentrix_client import get_dentrix_client
 from llm_provider import LLMConfig, get_llm_client
 from templates import TemplateManager
 from voice_profile_manager import VoiceProfileManager
+# Import concurrent processing system
+from task_queue import get_processing_queue, TaskStatus
+from whisper_pool import get_whisper_pool, transcribe_audio as pool_transcribe_audio
 
 # Initialize managers
 template_manager = TemplateManager()
 voice_manager = VoiceProfileManager()
 audio_processor = get_audio_processor(enable_noise_reduction=True, enable_normalization=True)
+
+# Initialize concurrent processing system
+processing_queue = get_processing_queue(max_workers=5)
+whisper_pool = get_whisper_pool(pool_size=3, model_size=os.getenv('WHISPER_MODEL', 'medium'))
+logging.info("🚀 Concurrent processing system initialized")
+logging.info(f"   - Processing Queue: 5 workers")
+logging.info(f"   - Whisper Pool: 3 models")
 
 # Load encrypted OpenAI API key from database if using OpenAI
 def load_openai_key_from_db():
@@ -627,13 +637,29 @@ def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_prof
         
         # Step 4: Transcribe with Whisper using cleaned audio and medical vocabulary
         logging.info("🎤 Transcribing with Whisper...")
-        result = WHISPER_MODEL.transcribe(
-            audio_to_transcribe,
-            language="en",
-            word_timestamps=True,
-            initial_prompt=medical_prompt,
-            condition_on_previous_text=True
-        )
+        
+        # Use Whisper pool for concurrent transcription support
+        if whisper_pool and whisper_pool.is_available():
+            logging.info("🏊 Using Whisper pool for concurrent transcription")
+            result = whisper_pool.transcribe_with_pool(
+                audio_to_transcribe,
+                language="en",
+                word_timestamps=True,
+                initial_prompt=medical_prompt,
+                condition_on_previous_text=True
+            )
+        elif WHISPER_MODEL:
+            # Fallback to global model if pool not available
+            logging.info("⚠️ Whisper pool unavailable, using global model")
+            result = WHISPER_MODEL.transcribe(
+                audio_to_transcribe,
+                language="en",
+                word_timestamps=True,
+                initial_prompt=medical_prompt,
+                condition_on_previous_text=True
+            )
+        else:
+            raise Exception("No Whisper model available")
         
         logging.info(f"✅ Transcription complete with medical vocabulary prompting")
         
@@ -1722,6 +1748,133 @@ async def delete_session(session_id: str):
 async def get_provider_sessions(provider_id: int):
     """Get all sessions for a specific provider"""
     return get_sessions_by_provider(provider_id)
+
+# ============================================
+# Async Processing Endpoints
+# ============================================
+
+@app.post("/api/sessions/{session_id}/process/async")
+async def process_session_async(session_id: str):
+    """
+    Submit session for async background processing
+    Returns immediately with task_id for status tracking
+    """
+    try:
+        # Get session data
+        session = get_session_by_id(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Submit task to processing queue
+        task_id = processing_queue.submit_task(
+            session_id,  # For tracking
+            process_session_background,  # Function to call
+            session_id  # Argument to pass to function
+        )
+        
+        logging.info(f"📝 Submitted async processing for session {session_id}, task {task_id}")
+        
+        return {
+            "success": True,
+            "task_id": task_id,
+            "session_id": session_id,
+            "message": "Processing started in background"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error submitting async task: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/sessions/{session_id}/status")
+async def get_session_status(session_id: str):
+    """
+    Get processing status for a session
+    Returns task status and progress
+    """
+    try:
+        # Get session
+        session = get_session_by_id(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Get all tasks for this session
+        tasks = processing_queue.get_session_tasks(session_id)
+        
+        # Determine overall status
+        if not tasks:
+            # No async tasks - check if session has SOAP note
+            processing_status = "completed" if session.get('soap_note') else "pending"
+            task_info = None
+        else:
+            # Get latest task
+            latest_task = tasks[-1]
+            processing_status = latest_task['status']
+            task_info = latest_task
+        
+        return {
+            "success": True,
+            "session_id": session_id,
+            "processing_status": processing_status,
+            "task": task_info,
+            "has_soap": bool(session.get('soap_note')),
+            "has_transcript": bool(session.get('transcript'))
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error getting session status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def process_session_background(session_id: str):
+    """
+    Background worker function to process a session
+    Called by the task queue workers
+    """
+    try:
+        logging.info(f"🔄 Background processing started for session {session_id}")
+        
+        # Get session
+        session = get_session_by_id(session_id)
+        if not session:
+            raise Exception("Session not found")
+        
+        # If already has SOAP note, skip
+        if session.get('soap_note'):
+            logging.info(f"Session {session_id} already has SOAP note, skipping")
+            return {"status": "already_processed"}
+        
+        transcript = session.get('transcript', '')
+        if not transcript:
+            raise Exception("No transcript available")
+        
+        doctor_name = session.get('doctor_name', '')
+        template = session.get('template', 'default')
+        
+        # Generate SOAP note using LLM
+        logging.info(f"🤖 Generating SOAP note for session {session_id}")
+        soap_note = generate_soap_note(transcript, template, doctor_name)
+        
+        # Update session with SOAP note
+        from database import update_session_soap
+        update_session_soap(session_id, soap_note)
+        
+        logging.info(f"✅ Background processing completed for session {session_id}")
+        
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "soap_length": len(soap_note) if soap_note else 0
+        }
+    
+    except Exception as e:
+        logging.error(f"❌ Background processing failed for session {session_id}: {e}")
+        raise
+
 
 # ============================================
 # Template Management Endpoints

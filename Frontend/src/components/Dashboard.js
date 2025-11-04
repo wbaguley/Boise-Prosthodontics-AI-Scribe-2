@@ -15,6 +15,7 @@ const Dashboard = ({ onNavigate }) => {
   });
   const [showSettings, setShowSettings] = useState(false);
   const [showLLMSettings, setShowLLMSettings] = useState(false);
+  const [showSystemStatus, setShowSystemStatus] = useState(false);
   
   // Settings state
   const [newProviderName, setNewProviderName] = useState('');
@@ -1293,6 +1294,95 @@ const Dashboard = ({ onNavigate }) => {
                   </div>
                 </div>
 
+                {/* System Status */}
+                <div className="bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
+                     onClick={() => {
+                       setShowSettings(false);
+                       setShowSystemStatus(true);
+                     }}>
+                  <div className="text-center">
+                    <div className="text-4xl mb-4">📊</div>
+                    <h4 className="font-semibold text-lg text-gray-800">System Status</h4>
+                    <p className="text-sm text-gray-600 mt-2">View system component health</p>
+                    <div className="mt-4 text-xs text-cyan-600">
+                      Whisper, Ollama, Voice Profiles, AI Model
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* System Status Modal */}
+      {showSystemStatus && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-2xl font-semibold">System Status</h3>
+                  <p className="text-sm text-gray-600 mt-1">Monitor the health of all system components</p>
+                </div>
+                <button
+                  onClick={() => setShowSystemStatus(false)}
+                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Whisper Status */}
+                <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-gray-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Whisper Status</h3>
+                    <div className={`w-4 h-4 rounded-full ${getStatusColor(systemStatus.whisper)}`}></div>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-800 mb-2">{getStatusText(systemStatus.whisper)}</p>
+                  <p className="text-sm text-gray-600">Speech-to-text transcription engine</p>
+                </div>
+
+                {/* Ollama (AI) Status */}
+                <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-gray-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Ollama (AI)</h3>
+                    <div className={`w-4 h-4 rounded-full ${getStatusColor(systemStatus.ollama)}`}></div>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-800 mb-2">{getStatusText(systemStatus.ollama)}</p>
+                  <p className="text-sm text-gray-600">AI language model service</p>
+                </div>
+
+                {/* Voice Profiles Status */}
+                <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-gray-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Voice Profiles</h3>
+                    <div className={`w-4 h-4 rounded-full ${getStatusColor(systemStatus.voice_profiles)}`}></div>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-800 mb-2">
+                    {providers.filter(p => p.has_voice_profile).length}/{providers.length}
+                  </p>
+                  <p className="text-sm text-gray-600">Providers with trained voice profiles</p>
+                </div>
+
+                {/* Current AI Model */}
+                <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-gray-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Current AI Model</h3>
+                    <div className={`w-4 h-4 rounded-full ${getStatusColor(systemStatus.ollama)}`}></div>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-800 mb-2">
+                    {currentLLM === 'llama3.1' ? 'Llama 3.1 8B' : 
+                     currentLLM === 'codellama' ? 'Code Llama 13B' : 
+                     currentLLM === 'mixtral' ? 'Mixtral 8x7B' : 
+                     currentLLM === 'meditron' ? 'Meditron 7B' : currentLLM}
+                  </p>
+                  <p className="text-sm text-gray-600">Active language model</p>
+                </div>
               </div>
             </div>
           </div>

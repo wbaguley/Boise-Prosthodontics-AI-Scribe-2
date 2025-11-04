@@ -543,6 +543,186 @@ def identify_doctor_speaker_from_profile(audio_path, speaker_segments, doctor_na
         logging.error(f"Error in voice profile speaker identification: {e}")
         return None
 
+
+def analyze_speaker_confidence(segments, speaker_segments, result):
+    """
+    Analyze the entire conversation to determine speaker identities with confidence scores
+    This prevents misidentification at the beginning by looking at the full context
+    
+    Args:
+        segments: Whisper transcription segments
+        speaker_segments: Diarization speaker segments
+        result: Full Whisper result
+    
+    Returns:
+        dict: Speaker confidence analysis {'SPEAKER_00': {'is_doctor': True, 'confidence': 0.85}}
+    """
+    from collections import defaultdict
+    
+    # Collect all text for each speaker
+    speaker_data = defaultdict(lambda: {
+        'texts': [],
+        'word_count': 0,
+        'segment_count': 0,
+        'medical_terms': 0,
+        'technical_terms': 0,
+        'questions_asked': 0,
+        'statements': 0,
+        'first_person_patient': 0,  # "my tooth hurts"
+        'second_person_doctor': 0,  # "your tooth needs"
+        'commands': 0,  # "open wide", "bite down"
+        'concerns': 0,  # "I'm worried", "it hurts"
+    })
+    
+    # Medical/dental terminology (doctor indicators)
+    medical_terms = [
+        'crown', 'implant', 'extraction', 'root canal', 'procedure', 'treatment',
+        'diagnosis', 'x-ray', 'bite', 'enamel', 'filling', 'bridge', 'veneer',
+        'orthodontic', 'periodontal', 'endodontic', 'prosthodontic', 'maxillary',
+        'mandibular', 'molar', 'premolar', 'incisor', 'canine', 'restoration',
+        'abutment', 'occlusion', 'caries', 'gingivitis', 'abscess'
+    ]
+    
+    # Technical procedure terms (strong doctor indicators)
+    technical_terms = [
+        'recommend', 'examine', 'evaluation', 'assessment', 'prognosis',
+        'prepare', 'place', 'adjust', 'cement', 'bond', 'contour',
+        'we need to', 'I suggest', 'the treatment plan', 'let me check'
+    ]
+    
+    # Patient concern phrases
+    patient_phrases = [
+        'it hurts', 'my tooth', 'my pain', 'i feel', 'i have', 'i want',
+        'i am worried', 'i think', 'can you', 'will it', 'how much',
+        'when will', 'i need', 'my gum', 'i am scared', 'i am nervous'
+    ]
+    
+    # Doctor directive phrases
+    doctor_phrases = [
+        'open wide', 'bite down', 'rinse', 'let me see', 'hold still',
+        'you need', 'your tooth', 'we should', 'i will', 'we can',
+        'looking at', 'the examination shows', 'based on'
+    ]
+    
+    # Collect data for each speaker
+    for segment in segments:
+        text = segment.get("text", "").strip()
+        if not text:
+            continue
+        
+        segment_start = segment.get("start", 0)
+        segment_end = segment.get("end", 0)
+        segment_mid = (segment_start + segment_end) / 2
+        
+        # Find which speaker this segment belongs to
+        speaker_id = None
+        for speaker_seg in speaker_segments:
+            if speaker_seg['start'] <= segment_mid <= speaker_seg['end']:
+                speaker_id = speaker_seg['speaker']
+                break
+        
+        if not speaker_id:
+            continue
+        
+        text_lower = text.lower()
+        words = text.split()
+        
+        # Collect data
+        speaker_data[speaker_id]['texts'].append(text)
+        speaker_data[speaker_id]['word_count'] += len(words)
+        speaker_data[speaker_id]['segment_count'] += 1
+        
+        # Count medical terms
+        for term in medical_terms:
+            if term in text_lower:
+                speaker_data[speaker_id]['medical_terms'] += 1
+        
+        # Count technical terms
+        for term in technical_terms:
+            if term in text_lower:
+                speaker_data[speaker_id]['technical_terms'] += 1
+        
+        # Count patient phrases
+        for phrase in patient_phrases:
+            if phrase in text_lower:
+                speaker_data[speaker_id]['first_person_patient'] += 1
+                speaker_data[speaker_id]['concerns'] += 1
+        
+        # Count doctor phrases
+        for phrase in doctor_phrases:
+            if phrase in text_lower:
+                speaker_data[speaker_id]['second_person_doctor'] += 1
+                speaker_data[speaker_id]['commands'] += 1
+        
+        # Count questions vs statements
+        if '?' in text:
+            speaker_data[speaker_id]['questions_asked'] += 1
+        else:
+            speaker_data[speaker_id]['statements'] += 1
+    
+    # Calculate confidence scores for each speaker being the doctor
+    speaker_scores = {}
+    
+    for speaker_id, data in speaker_data.items():
+        if data['word_count'] == 0:
+            speaker_scores[speaker_id] = {'is_doctor': False, 'confidence': 0.0, 'reason': 'No speech'}
+            continue
+        
+        # Calculate ratios
+        medical_ratio = data['medical_terms'] / max(data['word_count'], 1) * 100
+        technical_ratio = data['technical_terms'] / max(data['segment_count'], 1) * 10
+        patient_ratio = data['first_person_patient'] / max(data['segment_count'], 1) * 10
+        doctor_ratio = data['second_person_doctor'] / max(data['segment_count'], 1) * 10
+        command_ratio = data['commands'] / max(data['segment_count'], 1) * 10
+        
+        avg_words_per_segment = data['word_count'] / max(data['segment_count'], 1)
+        
+        # Doctor score (higher is more likely doctor)
+        doctor_score = (
+            medical_ratio * 0.3 +      # Medical terminology
+            technical_ratio * 0.25 +   # Technical procedure terms
+            doctor_ratio * 0.2 +       # "Your tooth" type phrases
+            command_ratio * 0.15 +     # Commands like "open wide"
+            min(avg_words_per_segment / 10, 1.0) * 0.1  # Doctors tend to speak in longer segments
+        )
+        
+        # Patient score (higher is more likely patient)
+        patient_score = (
+            patient_ratio * 0.4 +      # "My tooth hurts" type phrases
+            data['concerns'] / max(data['segment_count'], 1) * 0.3 +  # Expressions of concern
+            data['questions_asked'] / max(data['segment_count'], 1) * 0.3  # Asking questions
+        )
+        
+        # Determine identity
+        is_doctor = doctor_score > patient_score
+        confidence = abs(doctor_score - patient_score) / (doctor_score + patient_score + 0.01)
+        
+        reason = []
+        if is_doctor:
+            reason.append(f"medical={medical_ratio:.1f}%")
+            reason.append(f"technical={technical_ratio:.1f}")
+            reason.append(f"commands={command_ratio:.1f}")
+        else:
+            reason.append(f"patient_phrases={patient_ratio:.1f}")
+            reason.append(f"concerns={data['concerns']}")
+            reason.append(f"questions={data['questions_asked']}")
+        
+        speaker_scores[speaker_id] = {
+            'is_doctor': is_doctor,
+            'confidence': confidence,
+            'doctor_score': doctor_score,
+            'patient_score': patient_score,
+            'reason': ', '.join(reason),
+            'avg_words': avg_words_per_segment
+        }
+        
+        logging.info(f"Speaker {speaker_id}: {'DOCTOR' if is_doctor else 'PATIENT'} "
+                    f"(confidence: {confidence:.2f}, doctor_score: {doctor_score:.2f}, "
+                    f"patient_score: {patient_score:.2f}) - {speaker_scores[speaker_id]['reason']}")
+    
+    return speaker_scores
+
+
 def diarize_audio(audio_path):
     """Enhanced speaker diarization with better accuracy"""
     if not DIARIZATION_AVAILABLE or not DIARIZATION_PIPELINE:
@@ -707,47 +887,41 @@ def transcribe_audio_with_diarization(audio_path, doctor_name="", use_voice_prof
         
         if speaker_segments and num_speakers > 1:
             # Multi-speaker conversation - use diarization
-            # Determine which speaker is likely the doctor based on speech patterns
-            speaker_stats = {}
-            for segment in result.get("segments", []):
-                segment_start = segment.get("start", 0)
-                segment_end = segment.get("end", 0)
-                segment_mid = (segment_start + segment_end) / 2
-                
-                # Find speaker for this segment
-                for speaker_seg in speaker_segments:
-                    if speaker_seg['start'] <= segment_mid <= speaker_seg['end']:
-                        speaker_id = speaker_seg['speaker']
-                        if speaker_id not in speaker_stats:
-                            speaker_stats[speaker_id] = {'count': 0, 'words': 0, 'medical_terms': 0}
-                        
-                        speaker_stats[speaker_id]['count'] += 1
-                        words = segment["text"].split()
-                        speaker_stats[speaker_id]['words'] += len(words)
-                        
-                        # Count medical/dental terms to identify doctor
-                        medical_terms = ['tooth', 'crown', 'implant', 'extraction', 'root', 'canal', 'dentist', 'procedure', 'treatment', 'diagnosis', 'x-ray', 'bite', 'gum', 'enamel', 'filling', 'bridge', 'veneer', 'orthodontic', 'periodontal', 'endodontic', 'prosthodontic', 'oral', 'maxillary', 'mandibular', 'molar', 'premolar', 'incisor', 'canine']
-                        text_lower = segment["text"].lower()
-                        for term in medical_terms:
-                            speaker_stats[speaker_id]['medical_terms'] += text_lower.count(term)
-                        break
             
-            # Determine who is the doctor (only if voice profile didn't already identify them)
-            if doctor_speaker is None and len(speaker_stats) >= 2:
-                # Find speaker with most medical terms and longer average utterances
-                best_score = -1
-                for speaker_id, stats in speaker_stats.items():
-                    avg_words = stats['words'] / max(stats['count'], 1)
-                    medical_ratio = stats['medical_terms'] / max(stats['words'], 1)
-                    score = (avg_words * 0.3) + (medical_ratio * 0.7)  # Weight medical terms higher
-                    
-                    if score > best_score:
-                        best_score = score
-                        doctor_speaker = speaker_id
-                
-                logging.info(f"Identified doctor speaker: {doctor_speaker} based on medical content analysis (fallback)")
+            # STEP 1: Analyze FULL conversation first to determine speaker identities
+            logging.info("🔍 Analyzing full conversation for speaker identification...")
+            speaker_confidence = analyze_speaker_confidence(
+                result.get("segments", []),
+                speaker_segments,
+                result
+            )
             
-            # Map segments to speakers
+            # STEP 2: Determine which speaker is the doctor
+            # Priority: 1) Voice profile, 2) Confidence analysis
+            if doctor_speaker is None:
+                # Find speaker most likely to be the doctor based on full conversation analysis
+                best_doctor_candidate = None
+                best_confidence = 0.0
+                
+                for speaker_id, confidence_data in speaker_confidence.items():
+                    if confidence_data['is_doctor'] and confidence_data['confidence'] > best_confidence:
+                        best_confidence = confidence_data['confidence']
+                        best_doctor_candidate = speaker_id
+                
+                if best_doctor_candidate and best_confidence > 0.3:  # Minimum confidence threshold
+                    doctor_speaker = best_doctor_candidate
+                    logging.info(f"✅ Identified {doctor_speaker} as doctor (confidence: {best_confidence:.2f})")
+                else:
+                    logging.warning("⚠️ Low confidence in speaker identification, using fallback")
+                    # Fallback: speaker with most medical terms
+                    best_score = -1
+                    for speaker_id, confidence_data in speaker_confidence.items():
+                        if confidence_data['doctor_score'] > best_score:
+                            best_score = confidence_data['doctor_score']
+                            doctor_speaker = speaker_id
+                    logging.info(f"Fallback: Using {doctor_speaker} as doctor")
+            
+            # STEP 3: Apply labels consistently to ALL segments
             for segment in result.get("segments", []):
                 text = segment["text"].strip()
                 if not text:

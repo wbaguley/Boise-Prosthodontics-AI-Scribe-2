@@ -637,23 +637,6 @@ What would you like to change?`,
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setIsEditing(!isEditing)}
-                className={`px-4 py-2 rounded-lg ${
-                  isEditing ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-500 hover:bg-green-600'
-                } text-white`}
-              >
-                {isEditing ? 'Cancel Edit' : '✏️ Edit SOAP'}
-              </button>
-              {isEditing && (
-                <button
-                  onClick={saveChanges}
-                  disabled={isSaving}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
-                >
-                  {isSaving ? 'Saving...' : 'Save Changes'}
-                </button>
-              )}
-              <button
                 onClick={() => setShowDeleteModal(true)}
                 className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center gap-2"
               >
@@ -769,6 +752,23 @@ What would you like to change?`,
             </h2>
             <div className="flex gap-2">
               <button
+                onClick={() => setIsEditing(!isEditing)}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  isEditing ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-500 hover:bg-green-600'
+                } text-white`}
+              >
+                {isEditing ? '✕ Cancel Edit' : '✏️ Edit SOAP'}
+              </button>
+              {isEditing && (
+                <button
+                  onClick={saveChanges}
+                  disabled={isSaving}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 font-medium"
+                >
+                  {isSaving ? 'Saving...' : '💾 Save Changes'}
+                </button>
+              )}
+              <button
                 onClick={toggleEditChat}
                 disabled={!session?.soap_note && !editedSOAP}
                 className={`px-4 py-2 rounded-lg font-medium transition-colors ${
@@ -777,7 +777,7 @@ What would you like to change?`,
                     : 'bg-green-500 text-white hover:bg-green-600'
                 } ${(!session?.soap_note && !editedSOAP) ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                {showEditChat ? '✕ Close Chat' : '💬 Edit Chat'}
+                {showEditChat ? '✕ Close Chat' : '💬 AI Chat'}
               </button>
               <button
                 onClick={() => copyToClipboard(editedSOAP || session?.soap_note || '')}

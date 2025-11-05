@@ -1361,7 +1361,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => onNavigate && onNavigate('session-history')}
                   className="text-blue-600 hover:text-blue-800 text-sm font-medium"
                 >
-                  View All â†’
+                  View All →
                 </button>
               </div>
               
@@ -1428,7 +1428,7 @@ const Dashboard = ({ onNavigate }) => {
                                   ðŸ—‘ï¸
                                 </button>
                                 <div className="text-xs text-blue-600 font-medium">
-                                  Click to view/edit â†’
+                                  Click to view/edit →
                                 </div>
                               </div>
                             )}
@@ -3309,10 +3309,10 @@ const Dashboard = ({ onNavigate }) => {
                       {formatTime(recordingTime)}
                     </div>
                     {isPaused && (
-                      <div className="text-blue-600 text-sm mb-2">â¸ Paused</div>
+                      <div className="text-blue-600 text-sm mb-2">⏸ Paused</div>
                     )}
                     {!isPaused && (
-                      <div className="text-red-600 text-sm mb-2 animate-pulse">â— Recording</div>
+                      <div className="text-red-600 text-sm mb-2 animate-pulse">⏺ Recording</div>
                     )}
                   </div>
                   

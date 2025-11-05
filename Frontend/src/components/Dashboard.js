@@ -18,6 +18,15 @@ const Dashboard = ({ onNavigate }) => {
   const [showLLMSettings, setShowLLMSettings] = useState(false);
   const [showSystemStatus, setShowSystemStatus] = useState(false);
   
+  // Toast notification state
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  
+  // Toast helper function
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
+  };
+  
   // Recording modal state
   const [showRecordingModal, setShowRecordingModal] = useState(false);
   const [patientName, setPatientName] = useState('');
@@ -667,7 +676,7 @@ const Dashboard = ({ onNavigate }) => {
 
   const createProvider = async () => {
     if (!newProviderName.trim()) {
-      alert('Provider name is required');
+      showToast('Provider name is required', 'error');
       return;
     }
 
@@ -687,24 +696,24 @@ const Dashboard = ({ onNavigate }) => {
         setNewProviderSpecialty('');
         setNewProviderCredentials('');
         fetchProviders();
-        alert('Provider added successfully');
+        showToast('Provider added successfully', 'success');
       } else {
         const error = await response.json();
-        alert(error.detail || 'Failed to create provider');
+        showToast(error.detail || 'Failed to create provider', 'error');
       }
     } catch (error) {
       console.error('Error creating provider:', error);
-      alert('Failed to create provider');
+      showToast('Failed to create provider', 'error');
     }
   };
 
   const deleteProvider = async (providerId) => {
     if (!Array.isArray(providers) || providers.length === 1) {
-      alert('Cannot delete the last provider');
+      showToast('Cannot delete the last provider', 'error');
       return;
     }
 
-    if (!window.confirm('Are you sure you want to delete this provider?')) {
+    if (!window.confirm(`Are you sure you want to delete this provider?`)) {
       return;
     }
 
@@ -715,13 +724,13 @@ const Dashboard = ({ onNavigate }) => {
 
       if (response.ok) {
         fetchProviders();
-        alert('Provider deleted successfully');
+        showToast('Provider deleted successfully', 'success');
       } else {
-        alert('Failed to delete provider');
+        showToast('Failed to delete provider', 'error');
       }
     } catch (error) {
       console.error('Error deleting provider:', error);
-      alert('Failed to delete provider');
+      showToast('Failed to delete provider', 'error');
     }
   };
 
@@ -3469,6 +3478,29 @@ const Dashboard = ({ onNavigate }) => {
             <div className="text-xs text-gray-400 mt-2 text-center">
               Press Enter to send • Powered by AI
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed top-4 right-4 z-50 animate-fade-in">
+          <div className={`px-6 py-4 rounded-lg shadow-lg flex items-center gap-3 ${
+            toast.type === 'success' ? 'bg-green-500 text-white' :
+            toast.type === 'error' ? 'bg-red-500 text-white' :
+            'bg-blue-500 text-white'
+          }`}>
+            {toast.type === 'success' && (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            {toast.type === 'error' && (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            <span className="font-medium">{toast.message}</span>
           </div>
         </div>
       )}

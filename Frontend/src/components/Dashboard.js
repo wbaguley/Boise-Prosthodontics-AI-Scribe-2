@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import VoiceProfile from './Voiceprofile';
 import SimpleTemplateEditor from './SimpleTemplateEditor';
 import Settings from './Settings';
@@ -78,13 +78,19 @@ const Dashboard = ({ onNavigate }) => {
   const [configLoading, setConfigLoading] = useState(false);
   const [configActiveTab, setConfigActiveTab] = useState('email');
 
-  // AI Training state
+  // Co-Pilot state
   const [knowledgeArticles, setKnowledgeArticles] = useState([]);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [isTrainingChat, setIsTrainingChat] = useState(false);
   const [newArticle, setNewArticle] = useState({ title: '', content: '', category: '' });
   const [showArticleEditor, setShowArticleEditor] = useState(false);
+
+  // Floating Co-Pilot chatbot state
+  const [showCoPilotChat, setShowCoPilotChat] = useState(false);
+  const [coPilotMessages, setCoPilotMessages] = useState([]);
+  const [coPilotInput, setCoPilotInput] = useState('');
+  const [isCoPilotSending, setIsCoPilotSending] = useState(false);
 
   // Delete session state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -98,7 +104,7 @@ const Dashboard = ({ onNavigate }) => {
   const [showTemplateSettings, setShowTemplateSettings] = useState(false);
   const [showSystemSettings, setShowSystemSettings] = useState(false);
   const [showUserManagement, setShowUserManagement] = useState(false);
-  const [showAITraining, setShowAITraining] = useState(false);
+  const [showCoPilot, setShowCoPilot] = useState(false);
 
   // User Management state
   const [users, setUsers] = useState([]);
@@ -137,7 +143,7 @@ const Dashboard = ({ onNavigate }) => {
   // File upload reference
   const fileInputRef = useRef(null);
 
-  // Handlers for AI Training features
+  // Handlers for Co-Pilot features
   const handleFileUpload = (event) => {
     const files = Array.from(event.target.files);
     files.forEach(file => {
@@ -276,16 +282,16 @@ const Dashboard = ({ onNavigate }) => {
     const extension = fileName.split('.').pop().toLowerCase();
     switch (extension) {
       case 'pdf':
-        return '📄';
+        return 'ðŸ“„';
       case 'doc':
       case 'docx':
-        return '📝';
+        return 'ðŸ“';
       case 'txt':
-        return '📄';
+        return 'ðŸ“„';
       case 'md':
-        return '📋';
+        return 'ðŸ“‹';
       default:
-        return '📁';
+        return 'ðŸ“';
     }
   };
 
@@ -1029,7 +1035,7 @@ const Dashboard = ({ onNavigate }) => {
     }
   };
 
-  // AI Training Functions
+  // Co-Pilot Functions
   const fetchKnowledgeArticles = async () => {
     try {
       const response = await fetch(`${API_URL}/api/knowledge-articles`);
@@ -1141,6 +1147,60 @@ const Dashboard = ({ onNavigate }) => {
     }
   };
 
+  // Floating Co-Pilot chat functions
+  const sendCoPilotMessage = async () => {
+    if (!coPilotInput.trim() || isCoPilotSending) return;
+
+    const userMessage = {
+      role: 'user',
+      content: coPilotInput,
+      timestamp: new Date().toISOString()
+    };
+
+    setCoPilotMessages(prev => [...prev, userMessage]);
+    setCoPilotInput('');
+    setIsCoPilotSending(true);
+
+    try {
+      const response = await fetch(`${API_URL}/api/ai-training/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: coPilotInput })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const aiMessage = {
+          role: 'assistant',
+          content: result.response,
+          timestamp: new Date().toISOString()
+        };
+        setCoPilotMessages(prev => [...prev, aiMessage]);
+      } else {
+        const errorMessage = {
+          role: 'assistant',
+          content: 'Sorry, I encountered an error processing your message.',
+          timestamp: new Date().toISOString()
+        };
+        setCoPilotMessages(prev => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      console.error('Co-Pilot chat error:', error);
+      const errorMessage = {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error processing your message.',
+        timestamp: new Date().toISOString()
+      };
+      setCoPilotMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsCoPilotSending(false);
+    }
+  };
+
+  const clearCoPilotChat = () => {
+    setCoPilotMessages([]);
+  };
+
   // Delete session functionality
   const handleDeleteSession = async () => {
     if (!sessionToDelete || deleteConfirmation !== 'DELETE') {
@@ -1234,7 +1294,7 @@ const Dashboard = ({ onNavigate }) => {
                   className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center text-sm"
                   title="Settings"
                 >
-                  ⚙️
+                  âš™ï¸
                 </button>
               </div>
             </div>
@@ -1283,7 +1343,7 @@ const Dashboard = ({ onNavigate }) => {
                 className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm font-semibold"
                 title="Settings"
               >
-                ⚙️ Settings
+                âš™ï¸ Settings
               </button>
             </div>
           </div>
@@ -1301,7 +1361,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => onNavigate && onNavigate('session-history')}
                   className="text-blue-600 hover:text-blue-800 text-sm font-medium"
                 >
-                  View All →
+                  View All â†’
                 </button>
               </div>
               
@@ -1315,10 +1375,10 @@ const Dashboard = ({ onNavigate }) => {
                   {sessions.map((session) => {
                     const isProcessing = session.status === 'recording' || session.status === 'transcribing';
                     const statusConfig = {
-                      'recording': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: '🔴 Recording...' },
-                      'transcribing': { bg: 'bg-yellow-50', border: 'border-yellow-300', badge: 'bg-yellow-200 text-yellow-800', text: '⏳ Transcribing...' },
+                      'recording': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: 'ðŸ”´ Recording...' },
+                      'transcribing': { bg: 'bg-yellow-50', border: 'border-yellow-300', badge: 'bg-yellow-200 text-yellow-800', text: 'â³ Transcribing...' },
                       'completed': { bg: 'bg-white', border: 'border-gray-200', badge: '', text: '' },
-                      'error': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: '❌ Error' }
+                      'error': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: 'âŒ Error' }
                     };
                     const config = statusConfig[session.status] || statusConfig['completed'];
                     
@@ -1365,10 +1425,10 @@ const Dashboard = ({ onNavigate }) => {
                                   className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors"
                                   title="Delete Session"
                                 >
-                                  🗑️
+                                  ðŸ—‘ï¸
                                 </button>
                                 <div className="text-xs text-blue-600 font-medium">
-                                  Click to view/edit →
+                                  Click to view/edit â†’
                                 </div>
                               </div>
                             )}
@@ -1405,7 +1465,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowSettings(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </div>
@@ -1417,7 +1477,7 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
                      onClick={() => setShowProviderSettings(true)}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">👥</div>
+                    <div className="text-4xl mb-4">ðŸ‘¥</div>
                     <h4 className="font-semibold text-lg text-gray-800">Providers & Voice Training</h4>
                     <p className="text-sm text-gray-600 mt-2">Add providers and train voice profiles</p>
                     <div className="mt-4 text-xs text-blue-600">
@@ -1432,7 +1492,7 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
                      onClick={() => setShowSystemSettings(true)}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">⚙️</div>
+                    <div className="text-4xl mb-4">âš™ï¸</div>
                     <h4 className="font-semibold text-lg text-gray-800">System Configuration</h4>
                     <p className="text-sm text-gray-600 mt-2">Email, Dentrix API, AI Training</p>
                     <div className="mt-4 text-xs text-purple-600">
@@ -1445,7 +1505,7 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
                      onClick={() => setShowUserManagement(true)}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">👤</div>
+                    <div className="text-4xl mb-4">ðŸ‘¤</div>
                     <h4 className="font-semibold text-lg text-gray-800">User Management</h4>
                     <p className="text-sm text-gray-600 mt-2">Add and manage users</p>
                     <div className="mt-4 text-xs text-orange-600">
@@ -1454,15 +1514,15 @@ const Dashboard = ({ onNavigate }) => {
                   </div>
                 </div>
 
-                {/* AI Training */}
+                {/* Co-Pilot */}
                 <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
                      onClick={() => {
                        setShowSettings(false);
-                       setShowAITraining(true);
+                       setShowCoPilot(true);
                      }}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">🤖</div>
-                    <h4 className="font-semibold text-lg text-gray-800">AI Training</h4>
+                    <div className="text-4xl mb-4">ðŸ¤–</div>
+                    <h4 className="font-semibold text-lg text-gray-800">Co-Pilot</h4>
                     <p className="text-sm text-gray-600 mt-2">Train and interact with the AI model</p>
                     <div className="mt-4 text-xs text-indigo-600">
                       Chat Interface & Knowledge Base
@@ -1477,7 +1537,7 @@ const Dashboard = ({ onNavigate }) => {
                        setShowTemplateSettings(true);
                      }}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">📋</div>
+                    <div className="text-4xl mb-4">ðŸ“‹</div>
                     <h4 className="font-semibold text-lg text-gray-800">SOAP Templates</h4>
                     <p className="text-sm text-gray-600 mt-2">Create and manage SOAP templates</p>
                     <div className="mt-4 text-xs text-green-600">
@@ -1493,7 +1553,7 @@ const Dashboard = ({ onNavigate }) => {
                        setShowLLMSettings(true);
                      }}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">🧠</div>
+                    <div className="text-4xl mb-4">ðŸ§ </div>
                     <h4 className="font-semibold text-lg text-gray-800">LLM Configuration</h4>
                     <p className="text-sm text-gray-600 mt-2">Configure AI Provider & Model</p>
                     
@@ -1520,7 +1580,7 @@ const Dashboard = ({ onNavigate }) => {
                        onNavigate && onNavigate('system-config');
                      }}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">🕒</div>
+                    <div className="text-4xl mb-4">ðŸ•’</div>
                     <h4 className="font-semibold text-lg text-gray-800">Timezone</h4>
                     <p className="text-sm text-gray-600 mt-2">Configure system timezone settings</p>
                     <div className="mt-4 text-xs text-teal-600">
@@ -1536,7 +1596,7 @@ const Dashboard = ({ onNavigate }) => {
                        setShowSystemStatus(true);
                      }}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">📊</div>
+                    <div className="text-4xl mb-4">ðŸ“Š</div>
                     <h4 className="font-semibold text-lg text-gray-800">System Status</h4>
                     <p className="text-sm text-gray-600 mt-2">View system component health</p>
                     <div className="mt-4 text-xs text-cyan-600">
@@ -1565,7 +1625,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowSystemStatus(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </div>
@@ -1635,7 +1695,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowProviderSettings(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </div>
@@ -1688,7 +1748,7 @@ const Dashboard = ({ onNavigate }) => {
                           <div className="font-medium">{provider.name}</div>
                           {(provider.specialty || provider.credentials) && (
                             <div className="text-sm text-gray-600">
-                              {[provider.specialty, provider.credentials].filter(Boolean).join(' • ')}
+                              {[provider.specialty, provider.credentials].filter(Boolean).join(' â€¢ ')}
                             </div>
                           )}
                         </div>
@@ -1700,7 +1760,7 @@ const Dashboard = ({ onNavigate }) => {
                             }}
                             className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
                           >
-                            🎤 Train Voice
+                            ðŸŽ¤ Train Voice
                           </button>
                           <button
                             onClick={() => deleteProvider(provider.id)}
@@ -1730,7 +1790,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowTemplateSettings(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </div>
@@ -1751,7 +1811,7 @@ const Dashboard = ({ onNavigate }) => {
               
               {templates.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
-                  <div className="text-4xl mb-4">📋</div>
+                  <div className="text-4xl mb-4">ðŸ“‹</div>
                   <p>No custom templates created yet</p>
                   <p className="text-sm mt-2">Create your first template above</p>
                 </div>
@@ -1799,7 +1859,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowSystemSettings(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </div>
@@ -1863,9 +1923,9 @@ const Dashboard = ({ onNavigate }) => {
                           
                           const result = await response.json();
                           if (result.status === 'success') {
-                            alert(`✅ Connected to Ollama!\n\nHost: ${result.host}\nModels: ${result.models.map(m => m.name).join(', ')}`);
+                            alert(`âœ… Connected to Ollama!\n\nHost: ${result.host}\nModels: ${result.models.map(m => m.name).join(', ')}`);
                           } else {
-                            alert(`❌ Connection failed:\n${result.message}\n\nHost: ${result.host}`);
+                            alert(`âŒ Connection failed:\n${result.message}\n\nHost: ${result.host}`);
                           }
                         } catch (error) {
                           alert('Failed to test Ollama connection');
@@ -1878,7 +1938,7 @@ const Dashboard = ({ onNavigate }) => {
                   </div>
                   
                   <div className="bg-yellow-50 border border-yellow-200 rounded p-3 text-sm">
-                    <p className="font-medium text-yellow-800 mb-1">🔧 Troubleshooting:</p>
+                    <p className="font-medium text-yellow-800 mb-1">ðŸ”§ Troubleshooting:</p>
                     <ul className="text-yellow-700 space-y-1 list-disc list-inside">
                       <li>If using Docker: Use <code className="bg-yellow-100 px-1">http://ollama:11434</code></li>
                       <li>If running locally: Use <code className="bg-yellow-100 px-1">http://localhost:11434</code></li>
@@ -1985,7 +2045,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowUserManagement(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </div>
@@ -2020,7 +2080,7 @@ const Dashboard = ({ onNavigate }) => {
                   <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
                     <div>
                       <div className="font-medium">admin@boiseprosthodontics.com</div>
-                      <div className="text-sm text-gray-600">Administrator • Last active: Today</div>
+                      <div className="text-sm text-gray-600">Administrator â€¢ Last active: Today</div>
                     </div>
                     <div className="flex gap-2">
                       <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">Admin</span>
@@ -2036,17 +2096,17 @@ const Dashboard = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* AI Training Modal */}
-      {showAITraining && (
+      {/* Co-Pilot Modal */}
+      {showCoPilot && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 lg:p-4">
           <div className="bg-white rounded-lg w-full max-w-[98vw] lg:max-w-[95vw] max-h-[98vh] lg:max-h-[95vh] overflow-hidden">
             <div className="sticky top-0 bg-white border-b border-gray-200 p-3 lg:p-6">
               <div className="flex justify-between items-center">
-                <h3 className="text-xl lg:text-2xl font-semibold">AI Model Training</h3>
+                <h3 className="text-xl lg:text-2xl font-semibold">Co-Pilot Training</h3>
                 <button
                   onClick={async () => {
                     await saveTrainingConversation();
-                    setShowAITraining(false);
+                    setShowCoPilot(false);
                     // Clear chat for next session
                     setTrainingMessages([]);
                     setTrainingInput('');
@@ -2055,7 +2115,7 @@ const Dashboard = ({ onNavigate }) => {
                   }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </div>
@@ -2155,7 +2215,7 @@ const Dashboard = ({ onNavigate }) => {
                         className="hidden"
                       />
                       <div className="text-gray-500">
-                        <div className="text-3xl mb-3">📄</div>
+                        <div className="text-3xl mb-3">ðŸ“„</div>
                         <div className="text-sm font-medium mb-1">Drop files here or click to browse</div>
                         <div className="text-xs text-gray-400">
                           Supports PDF, DOC, DOCX, TXT, MD files
@@ -2177,7 +2237,7 @@ const Dashboard = ({ onNavigate }) => {
                                     {file.name}
                                   </div>
                                   <div className="text-xs text-gray-500">
-                                    {(file.size / 1024).toFixed(1)} KB • {file.uploadDate}
+                                    {(file.size / 1024).toFixed(1)} KB â€¢ {file.uploadDate}
                                   </div>
                                 </div>
                               </div>
@@ -2302,7 +2362,7 @@ const Dashboard = ({ onNavigate }) => {
                   }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </div>
@@ -2450,7 +2510,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowConfigManager(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </div>
@@ -2466,7 +2526,7 @@ const Dashboard = ({ onNavigate }) => {
                       : 'text-gray-600 hover:text-blue-600'
                   }`}
                 >
-                  📧 Email Configuration
+                  ðŸ“§ Email Configuration
                 </button>
                 <button
                   onClick={() => setConfigActiveTab('dentrix')}
@@ -2476,7 +2536,7 @@ const Dashboard = ({ onNavigate }) => {
                       : 'text-gray-600 hover:text-blue-600'
                   }`}
                 >
-                  🦷 Dentrix API
+                  ðŸ¦· Dentrix API
                 </button>
                 <button
                   onClick={() => setConfigActiveTab('ai-training')}
@@ -2486,7 +2546,7 @@ const Dashboard = ({ onNavigate }) => {
                       : 'text-gray-600 hover:text-blue-600'
                   }`}
                 >
-                  🧠 AI Training
+                  ï¿½ Co-Pilot
                 </button>
               </div>
 
@@ -2495,7 +2555,7 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="space-y-6">
                   <div className="bg-blue-50 p-4 rounded-lg">
                     <div className="flex items-start gap-3">
-                      <div className="text-blue-600 text-xl">📧</div>
+                      <div className="text-blue-600 text-xl">ðŸ“§</div>
                       <div>
                         <div className="font-medium text-blue-800">Email Service Configuration</div>
                         <div className="text-sm text-blue-700 mt-1">
@@ -2590,7 +2650,7 @@ const Dashboard = ({ onNavigate }) => {
 
                   <div className="bg-yellow-50 p-4 rounded-lg">
                     <div className="text-sm text-yellow-800">
-                      <div className="font-medium mb-2">📋 Gmail Setup Instructions:</div>
+                      <div className="font-medium mb-2">ðŸ“‹ Gmail Setup Instructions:</div>
                       <ol className="list-decimal list-inside space-y-1">
                         <li>Go to your Google Account settings</li>
                         <li>Enable 2-Step Verification</li>
@@ -2607,7 +2667,7 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="space-y-6">
                   <div className="bg-purple-50 p-4 rounded-lg">
                     <div className="flex items-start gap-3">
-                      <div className="text-purple-600 text-xl">🦷</div>
+                      <div className="text-purple-600 text-xl">ðŸ¦·</div>
                       <div>
                         <div className="font-medium text-purple-800">Dentrix API Configuration</div>
                         <div className="text-sm text-purple-700 mt-1">
@@ -2673,7 +2733,7 @@ const Dashboard = ({ onNavigate }) => {
 
                   <div className="bg-yellow-50 p-4 rounded-lg">
                     <div className="text-sm text-yellow-800">
-                      <div className="font-medium mb-2">📞 Getting Dentrix API Access:</div>
+                      <div className="font-medium mb-2">ðŸ“ž Getting Dentrix API Access:</div>
                       <ul className="list-disc list-inside space-y-1">
                         <li>Contact your Dentrix support representative</li>
                         <li>Request API credentials for patient lookup</li>
@@ -2685,14 +2745,14 @@ const Dashboard = ({ onNavigate }) => {
                 </div>
               )}
 
-              {/* AI Training Tab */}
+              {/* Co-Pilot Tab */}
               {configActiveTab === 'ai-training' && (
                 <div className="space-y-6">
                   <div className="bg-indigo-50 p-4 rounded-lg">
                     <div className="flex items-start gap-3">
-                      <div className="text-indigo-600 text-xl">🧠</div>
+                      <div className="text-indigo-600 text-xl">ï¿½</div>
                       <div>
-                        <h3 className="font-medium text-indigo-900">AI Training & Knowledge Base</h3>
+                        <h3 className="font-medium text-indigo-900">Co-Pilot & Knowledge Base</h3>
                         <p className="text-sm text-indigo-700 mt-1">
                           Chat with your AI to improve its performance and add knowledge articles for reference.
                         </p>
@@ -2702,14 +2762,14 @@ const Dashboard = ({ onNavigate }) => {
 
                   {/* AI Chat Training */}
                   <div className="bg-white border rounded-lg p-4">
-                    <h4 className="font-medium text-gray-900 mb-4">💬 Train Your AI Assistant</h4>
+                    <h4 className="font-medium text-gray-900 mb-4">ðŸ’¬ Train Your Co-Pilot</h4>
                     
                     <div className="border rounded-lg h-96 flex flex-col">
                       {/* Chat Messages */}
                       <div className="flex-1 p-4 overflow-y-auto bg-gray-50">
                         {chatMessages.length === 0 ? (
                           <div className="text-center text-gray-500 mt-20">
-                            <div className="text-4xl mb-2">🤖</div>
+                            <div className="text-4xl mb-2">ðŸ¤–</div>
                             <p>Start a conversation to train your AI scribe</p>
                             <p className="text-sm mt-1">Ask questions, give feedback, or provide guidance</p>
                           </div>
@@ -2748,7 +2808,7 @@ const Dashboard = ({ onNavigate }) => {
                           <button
                             type="button"
                             onClick={(e) => {
-                              console.log('🔥 BUTTON CLICKED!', { 
+                              console.log('ðŸ”¥ BUTTON CLICKED!', { 
                                 chatInput, 
                                 isTrainingChat, 
                                 disabled: isTrainingChat || !chatInput.trim() 
@@ -2771,7 +2831,7 @@ const Dashboard = ({ onNavigate }) => {
                   {/* Knowledge Articles */}
                   <div className="bg-white border rounded-lg p-4">
                     <div className="flex justify-between items-center mb-4">
-                      <h4 className="font-medium text-gray-900">📚 Knowledge Base Articles</h4>
+                      <h4 className="font-medium text-gray-900">ðŸ“š Knowledge Base Articles</h4>
                       <button
                         onClick={() => setShowArticleEditor(true)}
                         className="px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
@@ -2782,7 +2842,7 @@ const Dashboard = ({ onNavigate }) => {
 
                     {knowledgeArticles.length === 0 ? (
                       <div className="text-center text-gray-500 py-8">
-                        <div className="text-3xl mb-2">📖</div>
+                        <div className="text-3xl mb-2">ðŸ“–</div>
                         <p>No knowledge articles yet</p>
                         <p className="text-sm mt-1">Add articles to help your AI provide better responses</p>
                       </div>
@@ -2826,7 +2886,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowArticleEditor(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >
-                  ✕
+                  âœ•
                 </button>
               </div>
 
@@ -2905,7 +2965,7 @@ const Dashboard = ({ onNavigate }) => {
           <div className="bg-white rounded-lg w-full max-w-md">
             <div className="p-6">
               <div className="flex items-center mb-4">
-                <div className="text-red-500 text-2xl mr-3">⚠️</div>
+                <div className="text-red-500 text-2xl mr-3">âš ï¸</div>
                 <h3 className="text-lg font-semibold text-gray-900">Delete Session</h3>
               </div>
 
@@ -2970,7 +3030,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowAllMemories(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </div>
@@ -2986,7 +3046,7 @@ const Dashboard = ({ onNavigate }) => {
                     onClick={() => setShowArticleEditor(true)}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm"
                   >
-                    ➕ Add New Memory
+                    âž• Add New Memory
                   </button>
                   <div className="text-sm text-gray-500">
                     {knowledgeArticles.length} Memory Items
@@ -3001,7 +3061,7 @@ const Dashboard = ({ onNavigate }) => {
                       <div className="flex-1">
                         <h5 className="font-medium text-lg">{memory.title}</h5>
                         <p className="text-gray-600 text-sm mt-1">
-                          Category: {memory.category} • Added {new Date(memory.created_at).toLocaleDateString()}
+                          Category: {memory.category} â€¢ Added {new Date(memory.created_at).toLocaleDateString()}
                         </p>
                         <div className="mt-2 text-sm text-gray-700">
                           {memory.content && memory.content.length > 150 
@@ -3015,11 +3075,11 @@ const Dashboard = ({ onNavigate }) => {
                             onClick={() => {
                               loadConversation(memory);
                               setShowAllMemories(false);
-                              setShowAITraining(true);
+                              setShowCoPilot(true);
                             }}
                             className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 text-sm whitespace-nowrap"
                           >
-                            💬 Continue Chat
+                            ðŸ’¬ Continue Chat
                           </button>
                         )}
                         <button
@@ -3044,7 +3104,7 @@ const Dashboard = ({ onNavigate }) => {
                 
                 {knowledgeArticles.length === 0 && (
                   <div className="text-center py-12 text-gray-500">
-                    <div className="text-4xl mb-4">🧠</div>
+                    <div className="text-4xl mb-4">ðŸ§ </div>
                     <p>No AI memories found</p>
                     <p className="text-sm mt-2">Click "Add New Memory" to start building the AI's knowledge base</p>
                   </div>
@@ -3069,7 +3129,7 @@ const Dashboard = ({ onNavigate }) => {
                   }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </div>
@@ -3179,7 +3239,7 @@ const Dashboard = ({ onNavigate }) => {
                 }}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
               >
-                ×
+                Ã—
               </button>
             </div>
             <Settings onSave={() => {
@@ -3203,7 +3263,7 @@ const Dashboard = ({ onNavigate }) => {
                 disabled={isRecording}
                 className={`text-gray-500 hover:text-gray-700 text-2xl ${isRecording ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                ×
+                Ã—
               </button>
             </div>
             
@@ -3249,10 +3309,10 @@ const Dashboard = ({ onNavigate }) => {
                       {formatTime(recordingTime)}
                     </div>
                     {isPaused && (
-                      <div className="text-blue-600 text-sm mb-2">⏸ Paused</div>
+                      <div className="text-blue-600 text-sm mb-2">â¸ Paused</div>
                     )}
                     {!isPaused && (
-                      <div className="text-red-600 text-sm mb-2 animate-pulse">● Recording</div>
+                      <div className="text-red-600 text-sm mb-2 animate-pulse">â— Recording</div>
                     )}
                   </div>
                   
@@ -3289,6 +3349,125 @@ const Dashboard = ({ onNavigate }) => {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Co-Pilot Chat Button */}
+      <button
+        onClick={() => setShowCoPilotChat(!showCoPilotChat)}
+        className="fixed bottom-6 right-6 w-16 h-16 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-full shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300 flex items-center justify-center z-50 group"
+        title="Open Co-Pilot Chat"
+      >
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+        </svg>
+        <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full animate-pulse"></span>
+      </button>
+
+      {/* Floating Co-Pilot Chat Window */}
+      {showCoPilotChat && (
+        <div className="fixed bottom-24 right-6 w-96 h-[600px] bg-white rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden border-2 border-indigo-200">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-4 flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+              <h3 className="font-semibold text-lg">Co-Pilot Assistant</h3>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={clearCoPilotChat}
+                className="text-white/80 hover:text-white text-sm px-2"
+                title="Clear chat"
+              >
+                ðŸ—‘ï¸
+              </button>
+              <button
+                onClick={() => setShowCoPilotChat(false)}
+                className="text-white/80 hover:text-white text-xl"
+              >
+                Ã—
+              </button>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+            {coPilotMessages.length === 0 ? (
+              <div className="text-center text-gray-500 mt-20">
+                <div className="text-6xl mb-4">ðŸ¤–</div>
+                <p className="text-lg font-medium">Hi! I'm your Co-Pilot</p>
+                <p className="text-sm mt-2">Ask me anything about your practice,<br/>SOAP notes, or medical documentation.</p>
+              </div>
+            ) : (
+              coPilotMessages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[80%] px-4 py-2 rounded-2xl ${
+                      message.role === 'user'
+                        ? 'bg-indigo-500 text-white rounded-br-none'
+                        : 'bg-white text-gray-800 shadow-md rounded-bl-none'
+                    }`}
+                  >
+                    <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+                    <div className={`text-xs mt-1 ${
+                      message.role === 'user' ? 'text-indigo-100' : 'text-gray-400'
+                    }`}>
+                      {new Date(message.timestamp).toLocaleTimeString()}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+            {isCoPilotSending && (
+              <div className="flex justify-start">
+                <div className="bg-white text-gray-800 px-4 py-2 rounded-2xl shadow-md rounded-bl-none">
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
+                    <span className="text-sm">Thinking...</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Input */}
+          <div className="border-t border-gray-200 p-3 bg-white">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={coPilotInput}
+                onChange={(e) => setCoPilotInput(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendCoPilotMessage();
+                  }
+                }}
+                placeholder="Ask me anything..."
+                disabled={isCoPilotSending}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+              />
+              <button
+                onClick={sendCoPilotMessage}
+                disabled={!coPilotInput.trim() || isCoPilotSending}
+                className="px-4 py-2 bg-indigo-500 text-white rounded-full hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </button>
+            </div>
+            <div className="text-xs text-gray-400 mt-2 text-center">
+              Press Enter to send â€¢ Powered by AI
             </div>
           </div>
         </div>

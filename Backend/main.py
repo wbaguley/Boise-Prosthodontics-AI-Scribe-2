@@ -194,6 +194,24 @@ LLM_CONFIGS = {
     }
 }
 
+# Load saved LLM configuration on startup
+try:
+    config_path = os.path.join(os.path.dirname(__file__), "llm_config.json")
+    if os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            saved_config = json.load(f)
+            saved_model = saved_config.get("current_model", "llama")
+            if saved_model in LLM_CONFIGS:
+                CURRENT_LLM_MODEL = saved_model
+                CURRENT_LLM_HOST = LLM_CONFIGS[saved_model]["host"]
+                print(f"[LLM] Loaded saved configuration: {LLM_CONFIGS[saved_model]['name']}")
+            else:
+                print(f"[LLM] Saved model '{saved_model}' not found in configs, using default")
+    else:
+        print(f"[LLM] No saved configuration found, using default: {LLM_CONFIGS[CURRENT_LLM_MODEL]['name']}")
+except Exception as e:
+    print(f"[LLM] Error loading saved configuration: {e}, using default")
+
 # Import database functions
 from database import (
     save_session, get_all_sessions, get_session_by_id, get_sessions_by_provider,
@@ -296,12 +314,15 @@ def get_current_llm_config():
 def set_llm_model(model_type):
     """Set the current LLM model"""
     global CURRENT_LLM_MODEL, CURRENT_LLM_HOST
-    if model_type == 'llama':
+    if model_type in LLM_CONFIGS:
         CURRENT_LLM_MODEL = model_type
-        CURRENT_LLM_HOST = OLLAMA_HOST
+        CURRENT_LLM_HOST = LLM_CONFIGS[model_type]["host"]
         os.environ['CURRENT_LLM_MODEL'] = model_type
+        print(f"[LLM] Switched to {LLM_CONFIGS[model_type]['name']} at {CURRENT_LLM_HOST}")
         return True
-    return False
+    else:
+        print(f"[LLM ERROR] Unknown model type: {model_type}")
+        return False
 
 # Pydantic models
 class SessionInfo(BaseModel):

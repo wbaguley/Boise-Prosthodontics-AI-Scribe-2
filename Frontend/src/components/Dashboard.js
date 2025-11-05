@@ -2546,7 +2546,7 @@ const Dashboard = ({ onNavigate }) => {
                       : 'text-gray-600 hover:text-blue-600'
                   }`}
                 >
-                  ï¿½ Co-Pilot
+                  🤖 Co-Pilot
                 </button>
               </div>
 
@@ -2750,7 +2750,7 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="space-y-6">
                   <div className="bg-indigo-50 p-4 rounded-lg">
                     <div className="flex items-start gap-3">
-                      <div className="text-indigo-600 text-xl">ï¿½</div>
+                      <div className="text-indigo-600 text-xl">🤖</div>
                       <div>
                         <h3 className="font-medium text-indigo-900">Co-Pilot & Knowledge Base</h3>
                         <p className="text-sm text-indigo-700 mt-1">

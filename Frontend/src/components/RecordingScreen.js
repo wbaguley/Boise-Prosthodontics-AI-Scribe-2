@@ -22,8 +22,10 @@ const getWebSocketURL = () => {
   }
 };
 
-const RecordingScreen = ({ onNavigate }) => {
+const RecordingScreen = ({ onNavigate, initialProvider }) => {
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
   const [transcript, setTranscript] = useState('');
   const [soapNote, setSoapNote] = useState('');
   const [status, setStatus] = useState('Disconnected');
@@ -43,7 +45,7 @@ const RecordingScreen = ({ onNavigate }) => {
   const [isProcessingChat, setIsProcessingChat] = useState(false);
   
   const [providers, setProviders] = useState([]);
-  const [selectedProvider, setSelectedProvider] = useState(null);
+  const [selectedProvider, setSelectedProvider] = useState(initialProvider || null);
   const [selectedTemplate, setSelectedTemplate] = useState('new_patient_consultation');
   const [availableTemplates, setAvailableTemplates] = useState([]);
   
@@ -57,6 +59,7 @@ const RecordingScreen = ({ onNavigate }) => {
   const websocketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const timerIntervalRef = useRef(null);
 
   useEffect(() => {
     fetchProviders();
@@ -140,12 +143,14 @@ const RecordingScreen = ({ onNavigate }) => {
               setProcessingStage('Transcribing with speaker detection');
               setProcessingProgress(50);
             } else if (data.status.includes('Transcript ready')) {
-              setProcessingStage('Transcript ready');
+              setProcessingStage('Transcript complete');
               setProcessingProgress(100);
+              // Redirect to dashboard after transcript is ready
               setTimeout(() => {
-                setProcessingProgress(0);
-                setProcessingStage('');
-              }, 2000);
+                if (onNavigate) {
+                  onNavigate('dashboard');
+                }
+              }, 1500);
             } else if (data.status.includes('Processing audio')) {
               setProcessingStage('Processing audio');
               setProcessingProgress(20);
@@ -249,9 +254,16 @@ const RecordingScreen = ({ onNavigate }) => {
       
       mediaRecorderRef.current.start(100);
       setIsRecording(true);
+      setIsPaused(false);
+      setRecordingTime(0);
       setStatus('Recording... Speak clearly');
       setTranscript('');
       setSoapNote('');
+      
+      // Start timer
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
       
     } catch (error) {
       console.error('Microphone access error:', error);
@@ -260,14 +272,51 @@ const RecordingScreen = ({ onNavigate }) => {
     }
   };
 
+  const pauseRecording = () => {
+    if (mediaRecorderRef.current && isRecording && !isPaused) {
+      mediaRecorderRef.current.pause();
+      setIsPaused(true);
+      setStatus('Recording Paused');
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    }
+  };
+
+  const resumeRecording = () => {
+    if (mediaRecorderRef.current && isRecording && isPaused) {
+      mediaRecorderRef.current.resume();
+      setIsPaused(false);
+      setStatus('Recording... Speak clearly');
+      // Resume timer
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    }
+  };
+
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+      setIsPaused(false);
       setStatus('Processing audio...');
       setProcessingProgress(10);
       setProcessingStage('Preparing audio');
+      
+      // Clear timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
     }
+  };
+
+  // Format time as MM:SS
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const sendAudioToBackend = async (audioBlob) => {
@@ -657,6 +706,16 @@ What would you like to change about the SOAP note?`,
                     <>
                       <span className="hidden sm:inline">|</span>
                       <span>Session: {sessionId}</span>
+                    </>
+                  )}
+                  {selectedProvider && (
+                    <>
+                      <span className="hidden sm:inline">|</span>
+                      <span>Provider: {selectedProvider.name}</span>
+                    </>
+                  )}
+                  {sessionDate && (
+                    <>
                       <span className="hidden sm:inline">|</span>
                       <span>{sessionDate}</span>
                     </>
@@ -671,91 +730,9 @@ What would you like to change about the SOAP note?`,
                 Home
               </button>
             </div>
-            
-            {/* Provider and Template Selection */}
-            <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-gray-200">
-              <div className="w-full sm:w-auto">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Provider
-                </label>
-                <select
-                  value={selectedProvider?.id || ''}
-                  onChange={(e) => {
-                    const provider = providers.find(p => p.id === parseInt(e.target.value));
-                    setSelectedProvider(provider);
-                  }}
-                  className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  {providers.map(provider => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
           </div>
         </div>
         
-        {/* Create SOAP Note Section - Only shown when transcript is ready */}
-        {transcript && !soapNote && (
-          <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl shadow-lg p-6 mb-6 border-2 border-green-200">
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="flex-shrink-0">
-                <div className="text-4xl">📝</div>
-              </div>
-              <div className="flex-1 text-center sm:text-left">
-                <h3 className="text-lg font-semibold text-gray-800 mb-1">
-                  Transcript Ready!
-                </h3>
-                <p className="text-sm text-gray-600">
-                  Select a template and click "Create SOAP Note" to generate the documentation
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3 items-center">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Template
-                  </label>
-                  <select
-                    value={selectedTemplate}
-                    onChange={(e) => setSelectedTemplate(e.target.value)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm bg-white"
-                    disabled={isGeneratingSOAP}
-                  >
-                    {availableTemplates.map(template => (
-                      <option key={template} value={template}>
-                        {formatTemplateName(template)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  onClick={generateSOAPNote}
-                  disabled={isGeneratingSOAP}
-                  className={`mt-5 px-6 py-2 rounded-lg font-medium text-white transition-all ${
-                    isGeneratingSOAP
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 shadow-md hover:shadow-lg'
-                  }`}
-                >
-                  {isGeneratingSOAP ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                      </svg>
-                      Generating...
-                    </span>
-                  ) : (
-                    'Create SOAP Note'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Processing Indicator */}
         {processingProgress > 0 && processingProgress < 100 && (
           <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
@@ -767,401 +744,103 @@ What would you like to change about the SOAP note?`,
           </div>
         )}
 
-        {/* Recording Interface */}
-        <div className="grid lg:grid-cols-2 gap-6">
-          <div className="space-y-6">
-            {/* Recording Control */}
-            <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-              <h2 className="text-xl font-semibold mb-4">Recording Control</h2>
+        {/* Recording Control - Centered and Compact (Hidden when processing) */}
+        {processingProgress === 0 && (
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div className="flex flex-col items-center">
+              {/* Timer Display */}
+              {isRecording && (
+                <div className="mb-3 text-2xl font-mono font-bold text-gray-700">
+                  {formatTime(recordingTime)}
+                </div>
+              )}
+              
+              {/* Recording Buttons */}
+              <div className="flex items-center gap-3">
+              {/* Record/Stop Button */}
               <button
                 onClick={isRecording ? stopRecording : startRecording}
                 disabled={connectionStatus !== 'connected' || !selectedProvider}
-                className={`w-full py-4 px-6 rounded-lg font-semibold text-white transition-all ${
+                className={`relative px-8 py-4 rounded-full font-bold transition-all shadow-lg border-4 ${
                   isRecording 
-                    ? 'bg-gray-500 hover:bg-gray-600' 
-                    : 'bg-red-500 hover:bg-red-600'
-                } ${connectionStatus !== 'connected' || !selectedProvider ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    ? 'bg-gray-100 text-black border-gray-600 hover:bg-gray-200' 
+                    : 'bg-gray-100 text-black border-red-500 hover:border-red-600'
+                } ${connectionStatus !== 'connected' || !selectedProvider ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
+                title={isRecording ? 'Stop Recording' : 'Start Recording'}
               >
-                {isRecording ? 'Stop Recording' : 'Start Recording'}
+                {isRecording ? (
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl font-extrabold text-black">REC</span>
+                    <div className="w-5 h-5 bg-red-500 rounded-full animate-pulse"></div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl font-extrabold text-black">REC</span>
+                    <div className="w-5 h-5 bg-red-500 rounded-full"></div>
+                  </div>
+                )}
               </button>
-              
+
+              {/* Pause/Resume Button - Only shown when recording */}
+              {isRecording && (
+                <button
+                  onClick={isPaused ? resumeRecording : pauseRecording}
+                  className="relative px-6 py-4 rounded-full font-bold transition-all shadow-lg border-4 border-blue-500 bg-gray-100 text-blue-600 hover:bg-gray-200 hover:scale-105"
+                  title={isPaused ? 'Resume Recording' : 'Pause Recording'}
+                >
+                  {isPaused ? (
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z"/>
+                      </svg>
+                      <span className="text-sm font-bold">RESUME</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                      </svg>
+                      <span className="text-sm font-bold">PAUSE</span>
+                    </div>
+                  )}
+                </button>
+              )}
+            </div>
+            
+            {/* Status Messages */}
+            <div className="mt-4 text-center space-y-1">
               {selectedProvider?.has_voice_profile && (
-                <div className="mt-3 text-sm text-green-600 text-center">
-                  Voice profile active for speaker identification
+                <div className="text-xs text-green-600">
+                  ✓ Voice profile active
                 </div>
               )}
               
               {connectionStatus !== 'connected' && (
-                <div className="mt-3 text-sm text-red-600 text-center">
-                  Not connected to backend. Check if services are running.
+                <div className="text-xs text-red-600">
+                  ⚠ Not connected to backend
                 </div>
               )}
-            </div>
-
-            {/* Quick Info */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h3 className="font-semibold text-gray-800 mb-3">Quick Guide</h3>
-              <ul className="text-sm text-gray-600 space-y-2">
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-500">•</span>
-                  <span>Click "Start Recording" to begin</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-500">•</span>
-                  <span>Speak clearly during consultation</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-500">•</span>
-                  <span>System uses single-speaker mode (labels all as Doctor)</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-500">•</span>
-                  <span>Auto-generates SOAP note after recording</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-500">•</span>
-                  <span>Use correction box to request AI updates</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          {/* Transcript */}
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Transcript</h2>
-              <button
-                onClick={() => copyToClipboard(transcript)}
-                disabled={!transcript}
-                className="text-sm px-3 py-1 text-blue-600 hover:bg-blue-50 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Copy
-              </button>
-            </div>
-            <div className="h-64 overflow-y-auto bg-gray-50 rounded-lg p-4">
-              {transcript ? (
-                <pre className="whitespace-pre-wrap text-sm font-mono">
-                  {transcript}
-                </pre>
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-400">
-                  Transcript will appear here after recording...
+              
+              {!isRecording && connectionStatus === 'connected' && selectedProvider && (
+                <div className="text-xs text-gray-500">
+                  Click the red button to start recording
+                </div>
+              )}
+              
+              {isRecording && !isPaused && (
+                <div className="text-xs text-gray-600 animate-pulse">
+                  ● Recording in progress...
+                </div>
+              )}
+              
+              {isPaused && (
+                <div className="text-xs text-blue-600">
+                  ⏸ Recording paused
                 </div>
               )}
             </div>
           </div>
         </div>
-
-        {/* Correction Input */}
-        {soapNote && (
-          <div className="mt-6 bg-white rounded-xl shadow-lg p-6">
-            <h3 className="text-lg font-semibold mb-3">Request Changes from AI</h3>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={correctionRequest}
-                onChange={(e) => setCorrectionRequest(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && applyCorrection()}
-                placeholder="e.g., Add assessment for tooth #14, change treatment plan to include crown..."
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                disabled={isApplyingCorrection}
-              />
-              <button
-                onClick={applyCorrection}
-                disabled={isApplyingCorrection || !correctionRequest.trim()}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-              >
-                {isApplyingCorrection ? 'Applying...' : 'Apply Change'}
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              Tell the AI what to change in the SOAP note and it will update it for you
-            </p>
-          </div>
-        )}
-
-        {/* SOAP Note */}
-        <div className="mt-6 bg-white rounded-xl shadow-lg p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">
-              SOAP Note - {formatTemplateName(selectedTemplate)}
-            </h2>
-            <div className="flex gap-2">
-              <button
-                onClick={toggleEditChat}
-                disabled={!soapNote}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  showEditChat 
-                    ? 'bg-orange-500 text-white hover:bg-orange-600' 
-                    : 'bg-green-500 text-white hover:bg-green-600'
-                } ${!soapNote ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {showEditChat ? '✕ Close Chat' : '💬 Edit Chat'}
-              </button>
-              <button
-                onClick={() => copyToClipboard(soapNote)}
-                disabled={!soapNote}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                📋 Copy to EHR
-              </button>
-            </div>
-          </div>
-          
-          <div className={`grid gap-4 ${showEditChat ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
-            {/* SOAP Note Display */}
-            <div className="bg-gray-50 rounded-lg p-4 min-h-96 overflow-y-auto">
-              {isGeneratingSOAP ? (
-                <div className="flex flex-col items-center justify-center h-96">
-                  <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mb-4"></div>
-                  <p className="text-gray-600 font-medium">Generating SOAP note with AI...</p>
-                  <p className="text-gray-400 text-sm mt-2">This may take 10-30 seconds</p>
-                </div>
-              ) : soapNote ? (
-                <pre className="whitespace-pre-wrap text-sm">
-                  {soapNote}
-                </pre>
-              ) : (
-                <div className="flex items-center justify-center h-96 text-gray-400">
-                  SOAP note will be generated after recording...
-                </div>
-              )}
-            </div>
-
-            {/* Edit Chat Interface */}
-            {showEditChat && (
-              <div className="border border-gray-200 rounded-lg flex flex-col h-96">
-                <div className="bg-gray-100 px-4 py-2 rounded-t-lg flex justify-between items-center">
-                  <div>
-                    <h3 className="font-medium text-gray-700">AI Chat Editor</h3>
-                    <p className="text-xs text-gray-500">💾 Conversations are automatically saved to AI Memory when chat is closed</p>
-                  </div>
-                  <button
-                    onClick={clearChat}
-                    className="text-sm text-gray-500 hover:text-gray-700"
-                  >
-                    Clear Chat
-                  </button>
-                </div>
-                
-                {/* Quick Actions - Only show when no messages yet */}
-                {chatMessages.length <= 1 && (
-                  <div className="px-4 py-2 bg-blue-50 border-b border-gray-200">
-                    <div className="text-xs text-gray-600 mb-2">Quick actions:</div>
-                    <div className="flex flex-wrap gap-2">
-                      {quickActions.map((action, index) => (
-                        <button
-                          key={index}
-                          onClick={() => sendQuickAction(action)}
-                          disabled={isProcessingChat}
-                          className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50"
-                        >
-                          {action}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Chat Messages */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {chatMessages.map((message, index) => (
-                    <div
-                      key={index}
-                      className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
-                          message.role === 'user'
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-gray-200 text-gray-800'
-                        }`}
-                      >
-                        <div className="whitespace-pre-wrap">{message.content}</div>
-                        <div className={`text-xs mt-1 ${
-                          message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
-                        }`}>
-                          {message.timestamp.toLocaleTimeString()}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {isProcessingChat && (
-                    <div className="flex justify-start">
-                      <div className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg text-sm">
-                        <div className="flex items-center gap-2">
-                          <div className="animate-spin w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full"></div>
-                          Thinking...
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Chat Input */}
-                <div className="border-t border-gray-200 p-3">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          sendChatMessage();
-                        }
-                      }}
-                      placeholder="Ask me to modify the SOAP note..."
-                      disabled={isProcessingChat}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                    <button
-                      onClick={sendChatMessage}
-                      disabled={!chatInput.trim() || isProcessingChat}
-                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                    >
-                      {isProcessingChat ? '...' : 'Send'}
-                    </button>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Press Enter to send • Try: "Add patient allergies", "Update diagnosis", "Explain assessment"
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Post-Visit Email Section */}
-        {soapNote && (
-          <div className="mt-6 bg-white rounded-xl shadow-lg p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Post-Visit Summary Email</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={generatePostVisitEmail}
-                  disabled={isGeneratingEmail || !soapNote}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                >
-                  {isGeneratingEmail ? 'Generating...' : '✉️ Generate Email'}
-                </button>
-                {postVisitEmail && (
-                  <button
-                    onClick={() => setShowEmailEditor(!showEmailEditor)}
-                    className={`px-4 py-2 rounded-lg font-medium ${
-                      showEmailEditor 
-                        ? 'bg-orange-500 text-white hover:bg-orange-600' 
-                        : 'bg-green-500 text-white hover:bg-green-600'
-                    }`}
-                  >
-                    {showEmailEditor ? '✕ Close Editor' : '✏️ Edit Email'}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Email Content and Editor */}
-            <div className={`grid gap-4 ${showEmailEditor ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
-              {/* Email Display */}
-              <div className="bg-gray-50 rounded-lg p-4 min-h-64">
-                {isGeneratingEmail ? (
-                  <div className="flex flex-col items-center justify-center h-64">
-                    <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mb-4"></div>
-                    <p className="text-gray-600 font-medium">Generating patient-friendly email...</p>
-                  </div>
-                ) : postVisitEmail ? (
-                  <div>
-                    <div className="flex justify-between items-center mb-3">
-                      <h3 className="font-medium text-gray-700">Email Preview</h3>
-                      <button
-                        onClick={() => copyEmailToClipboard(postVisitEmail)}
-                        className="text-sm px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                      >
-                        📋 Copy
-                      </button>
-                    </div>
-                    <pre className="whitespace-pre-wrap text-sm text-gray-800">
-                      {postVisitEmail}
-                    </pre>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-64 text-gray-400">
-                    Click "Generate Email" to create a patient-friendly summary...
-                  </div>
-                )}
-              </div>
-
-              {/* Email Editor */}
-              {showEmailEditor && (
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <h3 className="font-medium text-gray-700 mb-3">Email Editor</h3>
-                  <textarea
-                    value={emailEditText}
-                    onChange={(e) => setEmailEditText(e.target.value)}
-                    placeholder="Edit the email content here..."
-                    className="w-full h-48 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm resize-none"
-                  />
-                  <div className="flex gap-2 mt-3">
-                    <button
-                      onClick={savePostVisitEmail}
-                      disabled={!emailEditText.trim()}
-                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm"
-                    >
-                      💾 Save Email
-                    </button>
-                    <button
-                      onClick={generatePostVisitEmail}
-                      disabled={isGeneratingEmail}
-                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm"
-                    >
-                      🔄 Regenerate
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Saved Emails List */}
-            {savedEmails.length > 0 && (
-              <div className="mt-6 border-t pt-4">
-                <h3 className="font-medium text-gray-700 mb-3">Saved Emails ({savedEmails.length})</h3>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {savedEmails.map((email) => (
-                    <div key={email.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">
-                          Email saved on {email.createdAt}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {email.content.substring(0, 100)}...
-                        </p>
-                      </div>
-                      <div className="flex gap-2 ml-4">
-                        <button
-                          onClick={() => loadEmail(email)}
-                          className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                        >
-                          Load
-                        </button>
-                        <button
-                          onClick={() => copyEmailToClipboard(email.content)}
-                          className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
-                        >
-                          Copy
-                        </button>
-                        <button
-                          onClick={() => deleteEmail(email.id)}
-                          className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         )}
       </div>
     </div>

@@ -8,10 +8,20 @@ import SystemConfig from './components/SystemConfig';
 const App = () => {
   const [currentView, setCurrentView] = useState('dashboard');
   const [selectedSessionId, setSelectedSessionId] = useState(null);
+  const [selectedProvider, setSelectedProvider] = useState(null);
 
-  const navigate = (view, sessionId = null) => {
+  const navigate = (view, data = null) => {
     setCurrentView(view);
-    setSelectedSessionId(sessionId);
+    if (typeof data === 'string') {
+      // Old behavior: data is sessionId
+      setSelectedSessionId(data);
+    } else if (data && data.provider) {
+      // New behavior: data contains provider
+      setSelectedProvider(data.provider);
+      setSelectedSessionId(null);
+    } else {
+      setSelectedSessionId(data);
+    }
   };
 
   // Default tenant config (tenant system removed)
@@ -39,7 +49,7 @@ const App = () => {
       '--secondary-color': tenantConfig.secondary_color
     }}>
       {currentView === 'dashboard' && <Dashboard onNavigate={navigate} tenantConfig={tenantConfig} />}
-      {currentView === 'recording' && <RecordingScreen onNavigate={navigate} tenantConfig={tenantConfig} />}
+      {currentView === 'recording' && <RecordingScreen onNavigate={navigate} tenantConfig={tenantConfig} initialProvider={selectedProvider} />}
       {currentView === 'session-detail' && <SessionDetail sessionId={selectedSessionId} onNavigate={navigate} tenantConfig={tenantConfig} />}
       {currentView === 'session-history' && <SessionHistory onNavigate={navigate} tenantConfig={tenantConfig} />}
       {currentView === 'system-config' && <SystemConfig onNavigate={navigate} tenantConfig={tenantConfig} />}

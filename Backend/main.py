@@ -200,7 +200,7 @@ from database import (
     create_provider, get_all_providers, get_provider_by_id, get_provider_by_name,
     update_provider, delete_provider, update_provider_voice_profile,
     update_session_patient_info, update_session_email_content, mark_email_sent, get_session_email_status,
-    update_session_soap, update_session_template
+    update_session_soap, update_session_template, update_session_status
 )
 from templates import TemplateManager
 from voice_profile_manager import VoiceProfileManager
@@ -1387,8 +1387,10 @@ async def websocket_endpoint(websocket: WebSocket):
     
     doctor_name = None
     provider_id = None
+    patient_name = None
     template_name = "default"
     use_voice_profile = False
+    session_saved = False  # Track if we've saved the session to DB yet
     
     try:
         mode = "Whisper" if WHISPER_AVAILABLE else "Mock"
@@ -1409,6 +1411,76 @@ async def websocket_endpoint(websocket: WebSocket):
             if "text" in data:
                 try:
                     message = json.loads(data["text"])
+                    
+                    # Capture audio data with metadata
+                    if message.get("audio_data"):
+                        doctor_name = message.get("doctor", doctor_name or "Unknown")
+                        patient_name = message.get("patient_name", patient_name)
+                        provider_id = message.get("doctor_id", provider_id)
+                        use_voice_profile = message.get("has_voice_profile", use_voice_profile)
+                        
+                        # Save session to database on first audio chunk
+                        if not session_saved:
+                            save_session(
+                                session_id,
+                                doctor_name or "Unknown",
+                                "Recording in progress...",  # Placeholder transcript
+                                "",  # Empty SOAP note
+                                template=template_name,
+                                provider_id=provider_id,
+                                patient_name=patient_name,
+                                status="recording"
+                            )
+                            session_saved = True
+                            logging.info(f"Session {session_id} saved to DB with status 'recording' for patient {patient_name}")
+                        
+                        # Decode and store audio
+                        audio_data = base64.b64decode(message["audio_data"])
+                        audio_chunks.append(audio_data)
+                        continue
+                    
+                    # Handle stop signal
+                    if message.get("stop"):
+                        if audio_chunks:
+                            # Update status to transcribing
+                            update_session_status(session_id, "transcribing")
+                            
+                            await websocket.send_json({"status": "Converting audio..."})
+                            
+                            combined_audio = b''.join(audio_chunks)
+                            audio_chunks = []
+                            
+                            wav_path = convert_audio_to_wav(combined_audio)
+                            if not wav_path:
+                                await websocket.send_json({"error": "Audio conversion failed"})
+                                update_session_status(session_id, "error")
+                                continue
+                            
+                            await websocket.send_json({
+                                "status": f"Transcribing with speaker detection..."
+                            })
+                            
+                            transcript = transcribe_audio_with_diarization(
+                                wav_path, 
+                                doctor_name,
+                                use_voice_profile=use_voice_profile
+                            )
+                            
+                            if wav_path and os.path.exists(wav_path):
+                                os.unlink(wav_path)
+                            
+                            # Update session with transcript and mark as completed
+                            update_session_status(session_id, "completed", transcript=transcript)
+                            
+                            await websocket.send_json({
+                                "transcript": transcript,
+                                "status": "Transcript ready",
+                                "session_id": session_id
+                            })
+                            
+                            logging.info(f"Session {session_id}: Transcript completed for patient {patient_name} by {doctor_name}")
+                        break
+                    
                     if message.get("type") == "session_info":
                         doctor_name = message.get("doctor", "Unknown")
                         requested_template = message.get("template", "default")
@@ -1463,31 +1535,23 @@ async def websocket_endpoint(websocket: WebSocket):
                             if wav_path and os.path.exists(wav_path):
                                 os.unlink(wav_path)
                             
-                            await websocket.send_json({
-                                "transcript": transcript,
-                                "status": "Generating SOAP note..."
-                            })
-                            
-                            soap = generate_soap_note(transcript, template_name, doctor_name or "")
-                            
-                            # Save session with both transcript and SOAP note
+                            # Save session with transcript only (no SOAP generation yet)
                             save_session(
                                 session_id, 
                                 doctor_name or "Unknown", 
                                 transcript, 
-                                soap,
+                                "",  # Empty SOAP note
                                 template=template_name,
                                 provider_id=provider_id
                             )
                             
                             await websocket.send_json({
                                 "transcript": transcript,
-                                "soap": soap,
-                                "status": "Complete",
+                                "status": "Transcript ready",
                                 "session_id": session_id
                             })
                             
-                            logging.info(f"Session {session_id}: Completed by {doctor_name}")
+                            logging.info(f"Session {session_id}: Transcript completed by {doctor_name}")
                     
             elif "bytes" in data:
                 audio_chunks.append(data["bytes"])

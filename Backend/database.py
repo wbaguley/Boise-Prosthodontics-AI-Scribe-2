@@ -50,6 +50,7 @@ class Session(Base):
     patient_name = Column(String, nullable=True)
     patient_email_encrypted = Column(Text, nullable=True)  # Encrypted patient email
     timestamp = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default='completed', nullable=True)  # recording, transcribing, completed, error
     transcript = Column(Text)
     soap_note = Column(Text)
     post_visit_email = Column(Text, nullable=True)  # Generated email content
@@ -273,7 +274,7 @@ def update_provider_voice_profile(provider_id, voice_profile_path):
 # Session CRUD Operations
 # ============================================
 
-def save_session(session_id, doctor, transcript, soap_note, template=None, provider_id=None):
+def save_session(session_id, doctor, transcript, soap_note, template=None, provider_id=None, patient_name=None, status='completed'):
     """Save session to database"""
     db = SessionLocal()
     try:
@@ -281,9 +282,11 @@ def save_session(session_id, doctor, transcript, soap_note, template=None, provi
             session_id=session_id,
             provider_id=provider_id,
             doctor_name=doctor,
+            patient_name=patient_name,
             transcript=transcript,
             soap_note=soap_note,
             template_used=template,
+            status=status,
             timestamp=datetime.utcnow()
         )
         db.add(session)
@@ -291,6 +294,25 @@ def save_session(session_id, doctor, transcript, soap_note, template=None, provi
         return True
     except Exception as e:
         print(f"Database error: {e}")
+        db.rollback()
+        return False
+    finally:
+        db.close()
+
+def update_session_status(session_id, status, transcript=None):
+    """Update session status and optionally transcript"""
+    db = SessionLocal()
+    try:
+        session = db.query(Session).filter_by(session_id=session_id).first()
+        if session:
+            session.status = status
+            if transcript is not None:
+                session.transcript = transcript
+            db.commit()
+            return True
+        return False
+    except Exception as e:
+        print(f"Database error updating session status: {e}")
         db.rollback()
         return False
     finally:
@@ -306,6 +328,8 @@ def get_all_sessions():
                 'session_id': s.session_id,
                 'doctor': s.doctor_name,
                 'provider_id': s.provider_id,
+                'patient_name': s.patient_name,
+                'status': s.status or 'completed',
                 'timestamp': s.timestamp.isoformat() if s.timestamp else '',
                 'transcript': s.transcript[:100] + '...' if s.transcript and len(s.transcript) > 100 else s.transcript or '',
                 'soap_note': s.soap_note[:100] + '...' if s.soap_note and len(s.soap_note) > 100 else s.soap_note or '',
@@ -329,6 +353,7 @@ def get_session_by_id(session_id):
                 'session_id': session.session_id,
                 'doctor': session.doctor_name,
                 'provider_id': session.provider_id,
+                'status': session.status or 'completed',
                 'timestamp': session.timestamp.isoformat() if session.timestamp else '',
                 'transcript': session.transcript or '',
                 'soap_note': session.soap_note or '',

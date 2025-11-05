@@ -630,8 +630,13 @@ What would you like to change?`,
                 <div>
                   <h1 className="text-2xl font-bold text-gray-800">Session Details</h1>
                   <p className="text-sm text-gray-600">
-                    {session?.doctor} • {new Date(session?.timestamp).toLocaleString()}
+                    Session: {session?.session_id} | Provider: {session?.doctor} | {new Date(session?.timestamp).toLocaleString()}
                   </p>
+                  {session?.patient_name && (
+                    <p className="text-sm text-gray-700 font-medium mt-1">
+                      Patient: {session.patient_name}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -648,20 +653,6 @@ What would you like to change?`,
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Session Info Card */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <h3 className="font-medium text-gray-700">Session ID</h3>
-              <p className="text-sm text-gray-600">{session?.session_id}</p>
-            </div>
-            <div>
-              <h3 className="font-medium text-gray-700">Provider</h3>
-              <p className="text-sm text-gray-600">{session?.doctor}</p>
-            </div>
-          </div>
-        </div>
-
         {/* Transcript Section */}
         {session?.transcript && (
           <div className="bg-white rounded-xl shadow-lg p-6 mb-6">

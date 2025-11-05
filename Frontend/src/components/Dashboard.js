@@ -8,6 +8,7 @@ const API_URL = process.env.REACT_APP_API_URL || '';
 const Dashboard = ({ onNavigate }) => {
   const [sessions, setSessions] = useState([]);
   const [providers, setProviders] = useState([]);
+  const [selectedProvider, setSelectedProvider] = useState(null);
   const [systemStatus, setSystemStatus] = useState({
     whisper: 'checking',
     ollama: 'checking',
@@ -16,6 +17,20 @@ const Dashboard = ({ onNavigate }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [showLLMSettings, setShowLLMSettings] = useState(false);
   const [showSystemStatus, setShowSystemStatus] = useState(false);
+  
+  // Recording modal state
+  const [showRecordingModal, setShowRecordingModal] = useState(false);
+  const [patientName, setPatientName] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [processingStage, setProcessingStage] = useState('');
+  const mediaRecorderRef = useRef(null);
+  const wsRef = useRef(null);
+  const timerIntervalRef = useRef(null);
+  const audioChunksRef = useRef([]);
   
   // Settings state
   const [newProviderName, setNewProviderName] = useState('');
@@ -452,11 +467,196 @@ const Dashboard = ({ onNavigate }) => {
       const data = await response.json();
       // Ensure data is always an array
       setProviders(Array.isArray(data) ? data : []);
+      
+      // Set first provider as default if not already selected
+      if (data.length > 0 && !selectedProvider) {
+        setSelectedProvider(data[0]);
+      }
     } catch (error) {
       console.error('Error fetching providers:', error);
       // Set to empty array on error to prevent filter errors
       setProviders([]);
     }
+  };
+
+  // Recording functions
+  const openRecordingModal = () => {
+    if (!selectedProvider) {
+      alert('Please select a provider first');
+      return;
+    }
+    setShowRecordingModal(true);
+    setPatientName('');
+  };
+
+  const startRecording = async () => {
+    if (!patientName.trim()) {
+      alert('Please enter a patient name');
+      return;
+    }
+
+    // Connect WebSocket and wait for it to be ready
+    const wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws/audio`;
+    const ws = new WebSocket(wsUrl);
+    
+    ws.onopen = async () => {
+      console.log('WebSocket connected');
+      setConnectionStatus('connected');
+      
+      // Now start recording
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+            
+            if (ws.readyState === WebSocket.OPEN) {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64Audio = reader.result.split(',')[1];
+                ws.send(JSON.stringify({
+                  audio_data: base64Audio,
+                  doctor: selectedProvider.name,
+                  patient_name: patientName,
+                  doctor_id: selectedProvider.id,
+                  has_voice_profile: selectedProvider.has_voice_profile || false
+                }));
+              };
+              reader.readAsDataURL(event.data);
+            }
+          }
+        };
+        
+        mediaRecorder.start(1000);
+        mediaRecorderRef.current = mediaRecorder;
+        setIsRecording(true);
+        setRecordingTime(0);
+        
+        // Start timer
+        timerIntervalRef.current = setInterval(() => {
+          setRecordingTime(prev => prev + 1);
+        }, 1000);
+        
+      } catch (error) {
+        console.error('Error starting recording:', error);
+        alert('Failed to access microphone');
+        ws.close();
+      }
+    };
+    
+    ws.onclose = () => {
+      console.log('WebSocket disconnected');
+      setConnectionStatus('disconnected');
+    };
+    
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.session_id) {
+        setCurrentSessionId(data.session_id);
+      }
+      if (data.status) {
+        if (data.status.includes('Transcript ready')) {
+          // Just refresh sessions, don't close modal (it's already closed)
+          fetchSessions();
+        }
+      }
+    };
+    
+    wsRef.current = ws;
+  };
+
+  const pauseRecording = () => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.pause();
+      setIsPaused(true);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    }
+  };
+
+  const resumeRecording = () => {
+    if (mediaRecorderRef.current?.state === 'paused') {
+      mediaRecorderRef.current.resume();
+      setIsPaused(false);
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ stop: true }));
+      }
+      
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+      
+      setIsRecording(false);
+      setIsPaused(false);
+      audioChunksRef.current = [];
+      
+      // Close modal immediately
+      setShowRecordingModal(false);
+      
+      // Reset states
+      setPatientName('');
+      setRecordingTime(0);
+      
+      // Refresh sessions to show the new recording session (which was saved to DB when recording started)
+      fetchSessions();
+      
+      // Poll for session updates every 2 seconds to see when transcript is ready
+      const pollInterval = setInterval(async () => {
+        try {
+          fetchSessions();
+          
+          // Check if the current session has completed transcribing
+          const response = await fetch(`${API_URL}/api/sessions/${currentSessionId}`);
+          if (response.ok) {
+            const session = await response.json();
+            if (session.status === 'completed') {
+              // Transcription complete, stop polling
+              clearInterval(pollInterval);
+            }
+          }
+        } catch (error) {
+          console.error('Error polling for session updates:', error);
+        }
+      }, 2000);
+      
+      // Stop polling after 2 minutes max
+      setTimeout(() => clearInterval(pollInterval), 120000);
+    }
+  };
+
+  const handleCloseRecordingModal = () => {
+    if (isRecording) {
+      stopRecording();
+    }
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+    setShowRecordingModal(false);
+    setPatientName('');
+    setRecordingTime(0);
+    setCurrentSessionId(null);
+    setProcessingStage('');
+    setConnectionStatus('disconnected');
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const createProvider = async () => {
@@ -988,58 +1188,103 @@ const Dashboard = ({ onNavigate }) => {
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Prosthodontic AI Scribe</h1>
               <p className="text-sm text-gray-600 mt-1">Dashboard</p>
             </div>
-            {/* Mobile Layout - Centered buttons stacked vertically */}
-            <div className="flex flex-col sm:hidden gap-3 items-center justify-center px-6 mx-auto">
-              <button
-                onClick={() => onNavigate && onNavigate('recording')}
-                className="w-full max-w-xs px-8 py-6 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center justify-center gap-3 text-xl font-bold shadow-lg transform hover:scale-105 transition-all duration-200"
-              >
-                ▶️ Start New Session
-              </button>
-              <button
-                onClick={() => onNavigate && onNavigate('session-history')}
-                className="w-full max-w-xs px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm font-semibold"
-              >
-                📋 View All Sessions
-              </button>
 
-              <button
-                onClick={() => setShowSettings(true)}
-                className="w-full max-w-xs px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm"
-              >
-                Settings
-              </button>
-              <button
-                onClick={() => onNavigate && onNavigate('system-config')}
-                className="w-full max-w-xs px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center justify-center gap-2 text-sm"
-              >
-                🕒 Timezone & System
-              </button>
-            </div>
-
-            {/* Desktop Layout - Start New Session in middle, other buttons to the right */}
-            <div className="hidden sm:flex items-center justify-center gap-4">
-              <button
-                onClick={() => onNavigate && onNavigate('recording')}
-                className="px-6 py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-3 text-lg font-bold shadow-lg transform hover:scale-105 transition-all duration-200"
-              >
-                ▶️ Start New Session
-              </button>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => onNavigate && onNavigate('session-history')}
-                  className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm font-semibold"
+            {/* Desktop Layout */}
+            <div className="hidden sm:flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+              {/* Provider Selector - Left side on desktop */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700">Provider:</label>
+                <select
+                  value={selectedProvider?.id || ''}
+                  onChange={(e) => {
+                    const provider = providers.find(p => p.id === parseInt(e.target.value));
+                    setSelectedProvider(provider);
+                  }}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  📋 View All Sessions
-                </button>
+                  {providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
+              {/* Start Recording - Center */}
+              <button
+                onClick={openRecordingModal}
+                disabled={!selectedProvider}
+                className={`px-8 py-4 rounded-full font-bold transition-all shadow-lg border-4 ${
+                  selectedProvider
+                    ? 'bg-gray-100 text-black border-red-500 hover:border-red-600 hover:scale-105'
+                    : 'bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed opacity-50'
+                }`}
+                title="Start Recording"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl font-extrabold">REC</span>
+                  <div className={`w-5 h-5 ${selectedProvider ? 'bg-red-500' : 'bg-gray-400'} rounded-full`}></div>
+                </div>
+              </button>
+
+              {/* Right side buttons */}
+              <div className="flex gap-2">
                 <button
                   onClick={() => setShowSettings(true)}
-                  className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm"
+                  className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center text-sm"
+                  title="Settings"
                 >
-                  Settings
+                  ⚙️
                 </button>
               </div>
+            </div>
+
+            {/* Mobile Layout */}
+            <div className="flex sm:hidden flex-col gap-3 w-full">
+              {/* Provider Selector */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-gray-700">Select Provider:</label>
+                <select
+                  value={selectedProvider?.id || ''}
+                  onChange={(e) => {
+                    const provider = providers.find(p => p.id === parseInt(e.target.value));
+                    setSelectedProvider(provider);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Start Recording */}
+              <button
+                onClick={openRecordingModal}
+                disabled={!selectedProvider}
+                className={`w-full px-8 py-4 rounded-full font-bold shadow-lg border-4 flex items-center justify-center transition-all ${
+                  selectedProvider
+                    ? 'bg-gray-100 text-black border-red-500 hover:border-red-600'
+                    : 'bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed opacity-50'
+                }`}
+                title="Start Recording"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl font-extrabold">REC</span>
+                  <div className={`w-5 h-5 ${selectedProvider ? 'bg-red-500' : 'bg-gray-400'} rounded-full`}></div>
+                </div>
+              </button>
+
+              {/* Settings button */}
+              <button
+                onClick={() => setShowSettings(true)}
+                className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm font-semibold"
+                title="Settings"
+              >
+                ⚙️ Settings
+              </button>
             </div>
           </div>
         </div>
@@ -1067,52 +1312,82 @@ const Dashboard = ({ onNavigate }) => {
                 </div>
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {sessions.map((session) => (
-                    <div
-                      key={session.session_id}
-                      onClick={() => onNavigate && onNavigate('session-detail', session.session_id)}
-                      className="p-4 border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-all"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="font-medium text-gray-800">{session.doctor}</div>
-                          <div className="text-sm text-gray-600">
-                            {new Date(session.timestamp).toLocaleString()}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            ID: {session.session_id}
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <div className="text-xs text-gray-500">
-                            {session.template_used ? 
-                              session.template_used.split('_').map(word => 
-                                word.charAt(0).toUpperCase() + word.slice(1)
-                              ).join(' ') : 'Default'
-                            }
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={(e) => openDeleteModal(session, e)}
-                              className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors"
-                              title="Delete Session"
-                            >
-                              🗑️
-                            </button>
-                            <div className="text-xs text-blue-600 font-medium">
-                              Click to view/edit →
+                  {sessions.map((session) => {
+                    const isProcessing = session.status === 'recording' || session.status === 'transcribing';
+                    const statusConfig = {
+                      'recording': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: '🔴 Recording...' },
+                      'transcribing': { bg: 'bg-yellow-50', border: 'border-yellow-300', badge: 'bg-yellow-200 text-yellow-800', text: '⏳ Transcribing...' },
+                      'completed': { bg: 'bg-white', border: 'border-gray-200', badge: '', text: '' },
+                      'error': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: '❌ Error' }
+                    };
+                    const config = statusConfig[session.status] || statusConfig['completed'];
+                    
+                    return (
+                      <div
+                        key={session.session_id}
+                        onClick={() => !isProcessing && onNavigate && onNavigate('session-detail', session.session_id)}
+                        className={`p-4 border ${config.border} ${config.bg} rounded-lg ${!isProcessing ? 'hover:bg-blue-50 hover:border-blue-300 cursor-pointer' : ''} transition-all`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-800">
+                              {session.doctor}
+                              {isProcessing && (
+                                <span className={`ml-2 text-xs ${config.badge} px-2 py-1 rounded-full animate-pulse`}>
+                                  {config.text}
+                                </span>
+                              )}
                             </div>
+                            <div className="text-sm text-gray-600">
+                              {new Date(session.timestamp).toLocaleString()}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              ID: {session.session_id}
+                            </div>
+                            {session.patient_name && (
+                              <div className="text-xs text-gray-600 mt-1">
+                                Patient: {session.patient_name}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-2">
+                            <div className="text-xs text-gray-500">
+                              {session.template_used ? 
+                                session.template_used.split('_').map(word => 
+                                  word.charAt(0).toUpperCase() + word.slice(1)
+                                ).join(' ') : 'Default'
+                              }
+                            </div>
+                            {!isProcessing && (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => openDeleteModal(session, e)}
+                                  className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors"
+                                  title="Delete Session"
+                                >
+                                  🗑️
+                                </button>
+                                <div className="text-xs text-blue-600 font-medium">
+                                  Click to view/edit →
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
+                        {session.transcript && session.status === 'completed' && (
+                          <div className="text-sm text-gray-600 mt-2 line-clamp-2">
+                            {session.transcript.substring(0, 150)}
+                            {session.transcript.length > 150 && '...'}
+                          </div>
+                        )}
+                        {isProcessing && (
+                          <div className="text-sm text-gray-700 mt-2 italic">
+                            {session.status === 'recording' ? 'Recording audio...' : 'Processing transcript...'}
+                          </div>
+                        )}
                       </div>
-                      {session.transcript && (
-                        <div className="text-sm text-gray-600 mt-2 line-clamp-2">
-                          {session.transcript.substring(0, 150)}
-                          {session.transcript.length > 150 && '...'}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -2911,6 +3186,110 @@ const Dashboard = ({ onNavigate }) => {
               setShowLLMSettings(false);
               fetchLLMConfig(); // Reload LLM config after save
             }} />
+          </div>
+        </div>
+      )}
+
+      {/* Recording Modal */}
+      {showRecordingModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-md">
+            <div className="border-b border-gray-200 p-4 flex justify-between items-center">
+              <h3 className="text-xl font-semibold">
+                {isRecording ? 'Recording in Progress' : 'Start Recording'}
+              </h3>
+              <button
+                onClick={handleCloseRecordingModal}
+                disabled={isRecording}
+                className={`text-gray-500 hover:text-gray-700 text-2xl ${isRecording ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="p-6">
+              {!isRecording ? (
+                <>
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Patient Name
+                    </label>
+                    <input
+                      type="text"
+                      value={patientName}
+                      onChange={(e) => setPatientName(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && startRecording()}
+                      placeholder="Enter patient name..."
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      autoFocus
+                    />
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <button
+                      onClick={startRecording}
+                      disabled={!patientName.trim()}
+                      className="flex-1 px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed font-bold"
+                    >
+                      Start Recording
+                    </button>
+                    <button
+                      onClick={handleCloseRecordingModal}
+                      className="flex-1 px-6 py-3 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 font-bold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-center mb-6">
+                    <div className="text-sm text-gray-600 mb-2">Patient: {patientName}</div>
+                    <div className="text-4xl font-mono font-bold text-gray-700 mb-4">
+                      {formatTime(recordingTime)}
+                    </div>
+                    {isPaused && (
+                      <div className="text-blue-600 text-sm mb-2">⏸ Paused</div>
+                    )}
+                    {!isPaused && (
+                      <div className="text-red-600 text-sm mb-2 animate-pulse">● Recording</div>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-3 justify-center">
+                    <button
+                      onClick={isPaused ? resumeRecording : pauseRecording}
+                      className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-bold flex items-center gap-2"
+                    >
+                      {isPaused ? (
+                        <>
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z"/>
+                          </svg>
+                          Resume
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                          </svg>
+                          Pause
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={stopRecording}
+                      className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-bold flex items-center gap-2"
+                    >
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <rect x="6" y="6" width="12" height="12" rx="1"/>
+                      </svg>
+                      Stop
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

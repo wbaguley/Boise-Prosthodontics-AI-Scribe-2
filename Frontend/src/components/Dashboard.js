@@ -282,16 +282,16 @@ const Dashboard = ({ onNavigate }) => {
     const extension = fileName.split('.').pop().toLowerCase();
     switch (extension) {
       case 'pdf':
-        return 'ðŸ“„';
+        return '📄';
       case 'doc':
       case 'docx':
-        return 'ðŸ“';
+        return '📁';
       case 'txt':
-        return 'ðŸ“„';
+        return '📄';
       case 'md':
-        return 'ðŸ“‹';
+        return '📋';
       default:
-        return 'ðŸ“';
+        return '📁';
     }
   };
 
@@ -699,7 +699,7 @@ const Dashboard = ({ onNavigate }) => {
   };
 
   const deleteProvider = async (providerId) => {
-    if (providers.length === 1) {
+    if (!Array.isArray(providers) || providers.length === 1) {
       alert('Cannot delete the last provider');
       return;
     }
@@ -1262,7 +1262,7 @@ const Dashboard = ({ onNavigate }) => {
                   }}
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  {providers.map((provider) => (
+                  {Array.isArray(providers) && providers.map((provider) => (
                     <option key={provider.id} value={provider.id}>
                       {provider.name}
                     </option>
@@ -1294,7 +1294,7 @@ const Dashboard = ({ onNavigate }) => {
                   className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center text-sm"
                   title="Settings"
                 >
-                  âš™ï¸
+                  •™ï¸
                 </button>
               </div>
             </div>
@@ -1312,7 +1312,7 @@ const Dashboard = ({ onNavigate }) => {
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  {providers.map((provider) => (
+                  {Array.isArray(providers) && providers.map((provider) => (
                     <option key={provider.id} value={provider.id}>
                       {provider.name}
                     </option>
@@ -1343,7 +1343,7 @@ const Dashboard = ({ onNavigate }) => {
                 className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm font-semibold"
                 title="Settings"
               >
-                âš™ï¸ Settings
+                •™ï¸ Settings
               </button>
             </div>
           </div>
@@ -1375,10 +1375,10 @@ const Dashboard = ({ onNavigate }) => {
                   {sessions.map((session) => {
                     const isProcessing = session.status === 'recording' || session.status === 'transcribing';
                     const statusConfig = {
-                      'recording': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: 'ðŸ”´ Recording...' },
-                      'transcribing': { bg: 'bg-yellow-50', border: 'border-yellow-300', badge: 'bg-yellow-200 text-yellow-800', text: 'â³ Transcribing...' },
+                      'recording': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: '🔴 Recording...' },
+                      'transcribing': { bg: 'bg-yellow-50', border: 'border-yellow-300', badge: 'bg-yellow-200 text-yellow-800', text: '⏳ Transcribing...' },
                       'completed': { bg: 'bg-white', border: 'border-gray-200', badge: '', text: '' },
-                      'error': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: 'âŒ Error' }
+                      'error': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: '→Œ Error' }
                     };
                     const config = statusConfig[session.status] || statusConfig['completed'];
                     
@@ -1425,7 +1425,7 @@ const Dashboard = ({ onNavigate }) => {
                                   className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors"
                                   title="Delete Session"
                                 >
-                                  ðŸ—‘ï¸
+                                  🗑️
                                 </button>
                                 <div className="text-xs text-blue-600 font-medium">
                                   Click to view/edit →
@@ -1477,11 +1477,11 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
                      onClick={() => setShowProviderSettings(true)}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">ðŸ‘¥</div>
+                    <div className="text-4xl mb-4">👥</div>
                     <h4 className="font-semibold text-lg text-gray-800">Providers & Voice Training</h4>
                     <p className="text-sm text-gray-600 mt-2">Add providers and train voice profiles</p>
                     <div className="mt-4 text-xs text-blue-600">
-                      {providers.length} Provider{providers.length !== 1 ? 's' : ''} Added
+                      {Array.isArray(providers) ? providers.length : 0} Provider{(Array.isArray(providers) ? providers.length : 0) !== 1 ? 's' : ''} Added
                     </div>
                   </div>
                 </div>
@@ -1492,7 +1492,7 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
                      onClick={() => setShowSystemSettings(true)}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">âš™ï¸</div>
+                    <div className="text-4xl mb-4">•™ï¸</div>
                     <h4 className="font-semibold text-lg text-gray-800">System Configuration</h4>
                     <p className="text-sm text-gray-600 mt-2">Email, Dentrix API, AI Training</p>
                     <div className="mt-4 text-xs text-purple-600">
@@ -1505,7 +1505,7 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
                      onClick={() => setShowUserManagement(true)}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">ðŸ‘¤</div>
+                    <div className="text-4xl mb-4">👤</div>
                     <h4 className="font-semibold text-lg text-gray-800">User Management</h4>
                     <p className="text-sm text-gray-600 mt-2">Add and manage users</p>
                     <div className="mt-4 text-xs text-orange-600">
@@ -1521,7 +1521,7 @@ const Dashboard = ({ onNavigate }) => {
                        setShowCoPilot(true);
                      }}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">ðŸ¤–</div>
+                    <div className="text-4xl mb-4">🤖</div>
                     <h4 className="font-semibold text-lg text-gray-800">Co-Pilot</h4>
                     <p className="text-sm text-gray-600 mt-2">Train and interact with the AI model</p>
                     <div className="mt-4 text-xs text-indigo-600">
@@ -1537,7 +1537,7 @@ const Dashboard = ({ onNavigate }) => {
                        setShowTemplateSettings(true);
                      }}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">ðŸ“‹</div>
+                    <div className="text-4xl mb-4">📋</div>
                     <h4 className="font-semibold text-lg text-gray-800">SOAP Templates</h4>
                     <p className="text-sm text-gray-600 mt-2">Create and manage SOAP templates</p>
                     <div className="mt-4 text-xs text-green-600">
@@ -1553,7 +1553,7 @@ const Dashboard = ({ onNavigate }) => {
                        setShowLLMSettings(true);
                      }}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">ðŸ§ </div>
+                    <div className="text-4xl mb-4">🧠</div>
                     <h4 className="font-semibold text-lg text-gray-800">LLM Configuration</h4>
                     <p className="text-sm text-gray-600 mt-2">Configure AI Provider & Model</p>
                     
@@ -1580,7 +1580,7 @@ const Dashboard = ({ onNavigate }) => {
                        onNavigate && onNavigate('system-config');
                      }}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">ðŸ•’</div>
+                    <div className="text-4xl mb-4">🕑</div>
                     <h4 className="font-semibold text-lg text-gray-800">Timezone</h4>
                     <p className="text-sm text-gray-600 mt-2">Configure system timezone settings</p>
                     <div className="mt-4 text-xs text-teal-600">
@@ -1596,7 +1596,7 @@ const Dashboard = ({ onNavigate }) => {
                        setShowSystemStatus(true);
                      }}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">ðŸ“Š</div>
+                    <div className="text-4xl mb-4">📊</div>
                     <h4 className="font-semibold text-lg text-gray-800">System Status</h4>
                     <p className="text-sm text-gray-600 mt-2">View system component health</p>
                     <div className="mt-4 text-xs text-cyan-600">
@@ -1659,7 +1659,7 @@ const Dashboard = ({ onNavigate }) => {
                     <div className={`w-4 h-4 rounded-full ${getStatusColor(systemStatus.voice_profiles)}`}></div>
                   </div>
                   <p className="text-3xl font-bold text-gray-800 mb-2">
-                    {providers.filter(p => p.has_voice_profile).length}/{providers.length}
+                    {Array.isArray(providers) ? providers.filter(p => p.has_voice_profile).length : 0}/{Array.isArray(providers) ? providers.length : 0}
                   </p>
                   <p className="text-sm text-gray-600">Providers with trained voice profiles</p>
                 </div>
@@ -1738,17 +1738,17 @@ const Dashboard = ({ onNavigate }) => {
               {/* Existing Providers */}
               <div className="bg-gray-50 rounded-lg p-6">
                 <h4 className="font-semibold text-lg mb-4">Providers</h4>
-                {providers.length === 0 ? (
+                {!Array.isArray(providers) || providers.length === 0 ? (
                   <p className="text-gray-500 text-sm">No providers added yet</p>
                 ) : (
                   <div className="space-y-3">
-                    {providers.map((provider) => (
+                    {Array.isArray(providers) && providers.map((provider) => (
                       <div key={provider.id} className="flex justify-between items-center p-3 bg-white rounded-lg border">
                         <div>
                           <div className="font-medium">{provider.name}</div>
                           {(provider.specialty || provider.credentials) && (
                             <div className="text-sm text-gray-600">
-                              {[provider.specialty, provider.credentials].filter(Boolean).join(' â€¢ ')}
+                              {[provider.specialty, provider.credentials].filter(Boolean).join(' • ')}
                             </div>
                           )}
                         </div>
@@ -1760,7 +1760,7 @@ const Dashboard = ({ onNavigate }) => {
                             }}
                             className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
                           >
-                            ðŸŽ¤ Train Voice
+                            🎤 Train Voice
                           </button>
                           <button
                             onClick={() => deleteProvider(provider.id)}
@@ -1811,7 +1811,7 @@ const Dashboard = ({ onNavigate }) => {
               
               {templates.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
-                  <div className="text-4xl mb-4">ðŸ“‹</div>
+                  <div className="text-4xl mb-4">📋</div>
                   <p>No custom templates created yet</p>
                   <p className="text-sm mt-2">Create your first template above</p>
                 </div>
@@ -1923,9 +1923,9 @@ const Dashboard = ({ onNavigate }) => {
                           
                           const result = await response.json();
                           if (result.status === 'success') {
-                            alert(`âœ… Connected to Ollama!\n\nHost: ${result.host}\nModels: ${result.models.map(m => m.name).join(', ')}`);
+                            alert(`✅… Connected to Ollama!\n\nHost: ${result.host}\nModels: ${result.models.map(m => m.name).join(', ')}`);
                           } else {
-                            alert(`âŒ Connection failed:\n${result.message}\n\nHost: ${result.host}`);
+                            alert(`→Œ Connection failed:\n${result.message}\n\nHost: ${result.host}`);
                           }
                         } catch (error) {
                           alert('Failed to test Ollama connection');
@@ -1938,7 +1938,7 @@ const Dashboard = ({ onNavigate }) => {
                   </div>
                   
                   <div className="bg-yellow-50 border border-yellow-200 rounded p-3 text-sm">
-                    <p className="font-medium text-yellow-800 mb-1">ðŸ”§ Troubleshooting:</p>
+                    <p className="font-medium text-yellow-800 mb-1">🔧 Troubleshooting:</p>
                     <ul className="text-yellow-700 space-y-1 list-disc list-inside">
                       <li>If using Docker: Use <code className="bg-yellow-100 px-1">http://ollama:11434</code></li>
                       <li>If running locally: Use <code className="bg-yellow-100 px-1">http://localhost:11434</code></li>
@@ -2080,7 +2080,7 @@ const Dashboard = ({ onNavigate }) => {
                   <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
                     <div>
                       <div className="font-medium">admin@boiseprosthodontics.com</div>
-                      <div className="text-sm text-gray-600">Administrator â€¢ Last active: Today</div>
+                      <div className="text-sm text-gray-600">Administrator • Last active: Today</div>
                     </div>
                     <div className="flex gap-2">
                       <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">Admin</span>
@@ -2215,7 +2215,7 @@ const Dashboard = ({ onNavigate }) => {
                         className="hidden"
                       />
                       <div className="text-gray-500">
-                        <div className="text-3xl mb-3">ðŸ“„</div>
+                        <div className="text-3xl mb-3">📄</div>
                         <div className="text-sm font-medium mb-1">Drop files here or click to browse</div>
                         <div className="text-xs text-gray-400">
                           Supports PDF, DOC, DOCX, TXT, MD files
@@ -2237,7 +2237,7 @@ const Dashboard = ({ onNavigate }) => {
                                     {file.name}
                                   </div>
                                   <div className="text-xs text-gray-500">
-                                    {(file.size / 1024).toFixed(1)} KB â€¢ {file.uploadDate}
+                                    {(file.size / 1024).toFixed(1)} KB • {file.uploadDate}
                                   </div>
                                 </div>
                               </div>
@@ -2526,7 +2526,7 @@ const Dashboard = ({ onNavigate }) => {
                       : 'text-gray-600 hover:text-blue-600'
                   }`}
                 >
-                  ðŸ“§ Email Configuration
+                  🔧 Email Configuration
                 </button>
                 <button
                   onClick={() => setConfigActiveTab('dentrix')}
@@ -2536,7 +2536,7 @@ const Dashboard = ({ onNavigate }) => {
                       : 'text-gray-600 hover:text-blue-600'
                   }`}
                 >
-                  ðŸ¦· Dentrix API
+                  🦷 Dentrix API
                 </button>
                 <button
                   onClick={() => setConfigActiveTab('ai-training')}
@@ -2555,7 +2555,7 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="space-y-6">
                   <div className="bg-blue-50 p-4 rounded-lg">
                     <div className="flex items-start gap-3">
-                      <div className="text-blue-600 text-xl">ðŸ“§</div>
+                      <div className="text-blue-600 text-xl">🔧</div>
                       <div>
                         <div className="font-medium text-blue-800">Email Service Configuration</div>
                         <div className="text-sm text-blue-700 mt-1">
@@ -2650,7 +2650,7 @@ const Dashboard = ({ onNavigate }) => {
 
                   <div className="bg-yellow-50 p-4 rounded-lg">
                     <div className="text-sm text-yellow-800">
-                      <div className="font-medium mb-2">ðŸ“‹ Gmail Setup Instructions:</div>
+                      <div className="font-medium mb-2">📋 Gmail Setup Instructions:</div>
                       <ol className="list-decimal list-inside space-y-1">
                         <li>Go to your Google Account settings</li>
                         <li>Enable 2-Step Verification</li>
@@ -2667,7 +2667,7 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="space-y-6">
                   <div className="bg-purple-50 p-4 rounded-lg">
                     <div className="flex items-start gap-3">
-                      <div className="text-purple-600 text-xl">ðŸ¦·</div>
+                      <div className="text-purple-600 text-xl">🦷</div>
                       <div>
                         <div className="font-medium text-purple-800">Dentrix API Configuration</div>
                         <div className="text-sm text-purple-700 mt-1">
@@ -2733,7 +2733,7 @@ const Dashboard = ({ onNavigate }) => {
 
                   <div className="bg-yellow-50 p-4 rounded-lg">
                     <div className="text-sm text-yellow-800">
-                      <div className="font-medium mb-2">ðŸ“ž Getting Dentrix API Access:</div>
+                      <div className="font-medium mb-2">📞 Getting Dentrix API Access:</div>
                       <ul className="list-disc list-inside space-y-1">
                         <li>Contact your Dentrix support representative</li>
                         <li>Request API credentials for patient lookup</li>
@@ -2762,14 +2762,14 @@ const Dashboard = ({ onNavigate }) => {
 
                   {/* AI Chat Training */}
                   <div className="bg-white border rounded-lg p-4">
-                    <h4 className="font-medium text-gray-900 mb-4">ðŸ’¬ Train Your Co-Pilot</h4>
+                    <h4 className="font-medium text-gray-900 mb-4">💬 Train Your Co-Pilot</h4>
                     
                     <div className="border rounded-lg h-96 flex flex-col">
                       {/* Chat Messages */}
                       <div className="flex-1 p-4 overflow-y-auto bg-gray-50">
                         {chatMessages.length === 0 ? (
                           <div className="text-center text-gray-500 mt-20">
-                            <div className="text-4xl mb-2">ðŸ¤–</div>
+                            <div className="text-4xl mb-2">🤖</div>
                             <p>Start a conversation to train your AI scribe</p>
                             <p className="text-sm mt-1">Ask questions, give feedback, or provide guidance</p>
                           </div>
@@ -2808,7 +2808,7 @@ const Dashboard = ({ onNavigate }) => {
                           <button
                             type="button"
                             onClick={(e) => {
-                              console.log('ðŸ”¥ BUTTON CLICKED!', { 
+                              console.log('🔥 BUTTON CLICKED!', { 
                                 chatInput, 
                                 isTrainingChat, 
                                 disabled: isTrainingChat || !chatInput.trim() 
@@ -2831,7 +2831,7 @@ const Dashboard = ({ onNavigate }) => {
                   {/* Knowledge Articles */}
                   <div className="bg-white border rounded-lg p-4">
                     <div className="flex justify-between items-center mb-4">
-                      <h4 className="font-medium text-gray-900">ðŸ“š Knowledge Base Articles</h4>
+                      <h4 className="font-medium text-gray-900">📚 Knowledge Base Articles</h4>
                       <button
                         onClick={() => setShowArticleEditor(true)}
                         className="px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
@@ -2842,7 +2842,7 @@ const Dashboard = ({ onNavigate }) => {
 
                     {knowledgeArticles.length === 0 ? (
                       <div className="text-center text-gray-500 py-8">
-                        <div className="text-3xl mb-2">ðŸ“–</div>
+                        <div className="text-3xl mb-2">📖</div>
                         <p>No knowledge articles yet</p>
                         <p className="text-sm mt-1">Add articles to help your AI provide better responses</p>
                       </div>
@@ -2886,7 +2886,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowArticleEditor(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >
-                  âœ•
+                  ✅•
                 </button>
               </div>
 
@@ -2965,7 +2965,7 @@ const Dashboard = ({ onNavigate }) => {
           <div className="bg-white rounded-lg w-full max-w-md">
             <div className="p-6">
               <div className="flex items-center mb-4">
-                <div className="text-red-500 text-2xl mr-3">âš ï¸</div>
+                <div className="text-red-500 text-2xl mr-3">• ï¸</div>
                 <h3 className="text-lg font-semibold text-gray-900">Delete Session</h3>
               </div>
 
@@ -3046,7 +3046,7 @@ const Dashboard = ({ onNavigate }) => {
                     onClick={() => setShowArticleEditor(true)}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm"
                   >
-                    âž• Add New Memory
+                    →• Add New Memory
                   </button>
                   <div className="text-sm text-gray-500">
                     {knowledgeArticles.length} Memory Items
@@ -3061,7 +3061,7 @@ const Dashboard = ({ onNavigate }) => {
                       <div className="flex-1">
                         <h5 className="font-medium text-lg">{memory.title}</h5>
                         <p className="text-gray-600 text-sm mt-1">
-                          Category: {memory.category} â€¢ Added {new Date(memory.created_at).toLocaleDateString()}
+                          Category: {memory.category} • Added {new Date(memory.created_at).toLocaleDateString()}
                         </p>
                         <div className="mt-2 text-sm text-gray-700">
                           {memory.content && memory.content.length > 150 
@@ -3079,7 +3079,7 @@ const Dashboard = ({ onNavigate }) => {
                             }}
                             className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 text-sm whitespace-nowrap"
                           >
-                            ðŸ’¬ Continue Chat
+                            💬 Continue Chat
                           </button>
                         )}
                         <button
@@ -3104,7 +3104,7 @@ const Dashboard = ({ onNavigate }) => {
                 
                 {knowledgeArticles.length === 0 && (
                   <div className="text-center py-12 text-gray-500">
-                    <div className="text-4xl mb-4">ðŸ§ </div>
+                    <div className="text-4xl mb-4">🧠</div>
                     <p>No AI memories found</p>
                     <p className="text-sm mt-2">Click "Add New Memory" to start building the AI's knowledge base</p>
                   </div>
@@ -3381,7 +3381,7 @@ const Dashboard = ({ onNavigate }) => {
                 className="text-white/80 hover:text-white text-sm px-2"
                 title="Clear chat"
               >
-                ðŸ—‘ï¸
+                🗑️
               </button>
               <button
                 onClick={() => setShowCoPilotChat(false)}
@@ -3396,7 +3396,7 @@ const Dashboard = ({ onNavigate }) => {
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
             {coPilotMessages.length === 0 ? (
               <div className="text-center text-gray-500 mt-20">
-                <div className="text-6xl mb-4">ðŸ¤–</div>
+                <div className="text-6xl mb-4">🤖</div>
                 <p className="text-lg font-medium">Hi! I'm your Co-Pilot</p>
                 <p className="text-sm mt-2">Ask me anything about your practice,<br/>SOAP notes, or medical documentation.</p>
               </div>
@@ -3467,7 +3467,7 @@ const Dashboard = ({ onNavigate }) => {
               </button>
             </div>
             <div className="text-xs text-gray-400 mt-2 text-center">
-              Press Enter to send â€¢ Powered by AI
+              Press Enter to send • Powered by AI
             </div>
           </div>
         </div>

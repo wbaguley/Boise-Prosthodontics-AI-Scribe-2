@@ -2693,23 +2693,24 @@ The AI should incorporate this guidance in all future responses to maintain cons
 async def get_llm_config():
     """Get current LLM configuration"""
     try:
-        # Format current config as an object matching the frontend expectations
+        # Get current config
         current_llm_config = get_current_llm_config()
-        formatted_config = None
         
-        # Find the current model configuration
-        formatted_config = None
-        for model_key, config in LLM_CONFIGS.items():
-            if config["host"] == current_llm_config["host"] and config["model"] == current_llm_config["model"]:
-                formatted_config = {
-                    "key": model_key,
-                    "name": config["name"],
-                    "model": config["model"],
-                    "host": config["host"]
-                }
-                break
+        # Determine provider type based on host
+        llm_provider = "openai" if "openai" in current_llm_config.get("host", "").lower() else "ollama"
         
-        return {"success": True, "config": formatted_config}
+        # Return format matching frontend expectations
+        return {
+            "success": True,
+            "llm_provider": llm_provider,
+            "model": current_llm_config.get("model", "llama3.1:8b"),
+            "config": {
+                "key": CURRENT_LLM_MODEL,
+                "name": current_llm_config.get("name", "Unknown"),
+                "model": current_llm_config.get("model", "llama3.1:8b"),
+                "host": current_llm_config.get("host", OLLAMA_HOST)
+            }
+        }
     except Exception as e:
         logging.error(f"Error getting LLM config: {e}")
         raise HTTPException(status_code=500, detail="Failed to get LLM configuration")

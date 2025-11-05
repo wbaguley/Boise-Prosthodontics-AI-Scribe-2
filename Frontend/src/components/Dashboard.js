@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import VoiceProfile from './Voiceprofile';
 import SimpleTemplateEditor from './SimpleTemplateEditor';
 import Settings from './Settings';
@@ -1294,7 +1294,7 @@ const Dashboard = ({ onNavigate }) => {
                   className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center text-sm"
                   title="Settings"
                 >
-                  •™ï¸
+                  ⚙️
                 </button>
               </div>
             </div>
@@ -1343,7 +1343,7 @@ const Dashboard = ({ onNavigate }) => {
                 className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm font-semibold"
                 title="Settings"
               >
-                •™ï¸ Settings
+                ⚙️ Settings
               </button>
             </div>
           </div>
@@ -1378,7 +1378,7 @@ const Dashboard = ({ onNavigate }) => {
                       'recording': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: '🔴 Recording...' },
                       'transcribing': { bg: 'bg-yellow-50', border: 'border-yellow-300', badge: 'bg-yellow-200 text-yellow-800', text: '⏳ Transcribing...' },
                       'completed': { bg: 'bg-white', border: 'border-gray-200', badge: '', text: '' },
-                      'error': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: '→Œ Error' }
+                      'error': { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-200 text-red-800', text: '→ Error' }
                     };
                     const config = statusConfig[session.status] || statusConfig['completed'];
                     
@@ -1465,7 +1465,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowSettings(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             </div>
@@ -1492,7 +1492,7 @@ const Dashboard = ({ onNavigate }) => {
                 <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all"
                      onClick={() => setShowSystemSettings(true)}>
                   <div className="text-center">
-                    <div className="text-4xl mb-4">•™ï¸</div>
+                    <div className="text-4xl mb-4">⚙️</div>
                     <h4 className="font-semibold text-lg text-gray-800">System Configuration</h4>
                     <p className="text-sm text-gray-600 mt-2">Email, Dentrix API, AI Training</p>
                     <div className="mt-4 text-xs text-purple-600">
@@ -1625,7 +1625,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowSystemStatus(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             </div>
@@ -1695,7 +1695,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowProviderSettings(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             </div>
@@ -1790,7 +1790,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowTemplateSettings(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             </div>
@@ -1859,7 +1859,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowSystemSettings(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             </div>
@@ -1923,9 +1923,9 @@ const Dashboard = ({ onNavigate }) => {
                           
                           const result = await response.json();
                           if (result.status === 'success') {
-                            alert(`✅… Connected to Ollama!\n\nHost: ${result.host}\nModels: ${result.models.map(m => m.name).join(', ')}`);
+                            alert(`✅ Connected to Ollama!\n\nHost: ${result.host}\nModels: ${result.models.map(m => m.name).join(', ')}`);
                           } else {
-                            alert(`→Œ Connection failed:\n${result.message}\n\nHost: ${result.host}`);
+                            alert(`→ Connection failed:\n${result.message}\n\nHost: ${result.host}`);
                           }
                         } catch (error) {
                           alert('Failed to test Ollama connection');
@@ -2045,7 +2045,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowUserManagement(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             </div>
@@ -2115,7 +2115,7 @@ const Dashboard = ({ onNavigate }) => {
                   }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             </div>
@@ -2362,7 +2362,7 @@ const Dashboard = ({ onNavigate }) => {
                   }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             </div>
@@ -2510,7 +2510,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowConfigManager(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             </div>
@@ -2886,7 +2886,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowArticleEditor(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >
-                  ✅•
+                  ✅
                 </button>
               </div>
 
@@ -2965,7 +2965,7 @@ const Dashboard = ({ onNavigate }) => {
           <div className="bg-white rounded-lg w-full max-w-md">
             <div className="p-6">
               <div className="flex items-center mb-4">
-                <div className="text-red-500 text-2xl mr-3">• ï¸</div>
+                <div className="text-red-500 text-2xl mr-3">⚠️</div>
                 <h3 className="text-lg font-semibold text-gray-900">Delete Session</h3>
               </div>
 
@@ -3030,7 +3030,7 @@ const Dashboard = ({ onNavigate }) => {
                   onClick={() => setShowAllMemories(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             </div>
@@ -3046,7 +3046,7 @@ const Dashboard = ({ onNavigate }) => {
                     onClick={() => setShowArticleEditor(true)}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm"
                   >
-                    →• Add New Memory
+                    → Add New Memory
                   </button>
                   <div className="text-sm text-gray-500">
                     {knowledgeArticles.length} Memory Items
@@ -3129,7 +3129,7 @@ const Dashboard = ({ onNavigate }) => {
                   }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             </div>
@@ -3239,7 +3239,7 @@ const Dashboard = ({ onNavigate }) => {
                 }}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
               >
-                Ã—
+                ×
               </button>
             </div>
             <Settings onSave={() => {
@@ -3263,7 +3263,7 @@ const Dashboard = ({ onNavigate }) => {
                 disabled={isRecording}
                 className={`text-gray-500 hover:text-gray-700 text-2xl ${isRecording ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                Ã—
+                ×
               </button>
             </div>
             
@@ -3387,7 +3387,7 @@ const Dashboard = ({ onNavigate }) => {
                 onClick={() => setShowCoPilotChat(false)}
                 className="text-white/80 hover:text-white text-xl"
               >
-                Ã—
+                ×
               </button>
             </div>
           </div>

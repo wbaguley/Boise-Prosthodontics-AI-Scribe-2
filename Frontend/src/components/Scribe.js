@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import VoiceProfile from './Voiceprofile';
-import DentrixIntegration from './DentrixIntegration';
 
 const API_URL = process.env.REACT_APP_API_URL || '';
 const getWebSocketURL = () => {
@@ -888,17 +887,6 @@ What would you like to change about the SOAP note?`,
             )}
           </div>
         </div>
-
-        {/* Dentrix Integration Section */}
-        {soapNote && sessionId && selectedProvider && (
-          <div className="mt-6">
-            <DentrixIntegration 
-              sessionId={sessionId}
-              soapNote={soapNote}
-              providerId={selectedProvider.id}
-            />
-          </div>
-        )}
       </div>
     </div>
   );

@@ -53,12 +53,38 @@ const Settings = ({ onSave }) => {
     }
 
     try {
-      const config = {
-        provider: currentProvider,
-        openai_api_key: currentProvider === 'openai' ? openaiApiKey : undefined,
-        openai_model: currentProvider === 'openai' ? openaiModel : undefined,
-        ollama_model: currentProvider === 'ollama' ? ollamaModel : undefined,
+      // Map the full model string to the backend key
+      const modelKeyMap = {
+        'llama3.1:8b': 'llama',
+        'codellama:13b': 'codellama',
+        'mixtral:8x7b': 'mixtral',
+        'meditron:7b': 'meditron',
+        'gpt-4o-mini': 'gpt4o-mini',
+        'gpt-4o': 'gpt4o',
+        'gpt-4-turbo': 'gpt4-turbo',
+        'gpt-4': 'gpt4',
+        'gpt-3.5-turbo': 'gpt35-turbo'
       };
+
+      // Send the correct format based on provider
+      let config;
+      
+      if (currentProvider === 'openai') {
+        // For OpenAI, send the model key from the map
+        const modelKey = modelKeyMap[openaiModel] || 'gpt4o-mini';
+        config = {
+          model: modelKey,  // Backend expects "model" key with the short name
+          api_key: openaiApiKey || undefined  // Only send if provided
+        };
+      } else {
+        // For Ollama, send the model key from the map
+        const modelKey = modelKeyMap[ollamaModel] || 'llama';
+        config = {
+          model: modelKey  // Backend expects "model" key with the short name
+        };
+      }
+
+      console.log('Sending config to backend:', config);  // Debug log
 
       const response = await fetch('/api/llm/config', {
         method: 'POST',
@@ -87,6 +113,7 @@ const Settings = ({ onSave }) => {
         setError(data.detail || 'Failed to save settings');
       }
     } catch (err) {
+      console.error('Error saving settings:', err);  // Debug log
       setError('Error saving settings: ' + err.message);
     } finally {
       setSaving(false);
